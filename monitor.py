@@ -20,7 +20,7 @@ from typing import Callable, Dict
 
 import notifier
 from targets import TargetResult
-from targets import news, sales_info, shop
+from targets import news, sales_info, shop  # noqa: F401 — `shop` available for re-enable
 
 LOGGER = logging.getLogger("monitor")
 
@@ -30,10 +30,15 @@ FAILURE_STATE_FILE = Path(__file__).resolve().parent / "state" / "failure_counts
 TargetRunner = Callable[[], TargetResult]
 TargetDescriber = Callable[[], str]
 
+# Active targets. The `shop` target is intentionally disabled because the FIFA
+# shop is behind Akamai and blocks GitHub Actions datacenter IPs — leaving it
+# enabled produces a "monitor broken: shop" alert every ~45 min that drowns out
+# real signal. Re-enable by uncommenting the shop line below (and consider
+# wiring a residential proxy via the PROXY_URL env var first).
 TARGETS: Dict[str, tuple[TargetRunner, TargetDescriber]] = {
     news.NAME: (news.run, news.describe_state),
     sales_info.NAME: (sales_info.run, sales_info.describe_state),
-    shop.NAME: (shop.run, shop.describe_state),
+    # shop.NAME: (shop.run, shop.describe_state),
 }
 
 
