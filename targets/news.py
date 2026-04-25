@@ -16,8 +16,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import http_utils
-import notifier
-from targets import TargetResult
+from targets import AlertSpec, TargetResult
 
 LOGGER = logging.getLogger(__name__)
 
@@ -80,7 +79,9 @@ def run() -> TargetResult:
         seen[article.url] = {"title": article.title, "first_seen": now_iso}
         if _matches_keywords(article):
             matched_count += 1
-            messages.append(notifier.new_ticket_article(article.title, article.url))
+            messages.append(
+                AlertSpec(kind="new_article", title=article.title, url=article.url)
+            )
 
     _save_seen(seen)
 

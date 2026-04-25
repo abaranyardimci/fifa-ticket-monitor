@@ -1,8 +1,12 @@
 # FIFA WC 2026 Ticket Drop Monitor
 
 Polls three FIFA-controlled surfaces every 15 minutes via GitHub Actions and pings
-Telegram when something interesting changes — a Last-Minute Sales drop, a sales-phase
-update, or a new ticket-related news article.
+**both Telegram and email** in parallel when something interesting changes — a
+Last-Minute Sales drop, a sales-phase update, or a new ticket-related news article.
+
+Both channels fire on every alert, independently. If one fails (server down,
+revoked token, muted chat), the other still gets through. Either channel is
+optional — the monitor degrades gracefully to whichever you've configured.
 
 ## Targets
 
@@ -17,16 +21,19 @@ and alerts only when a new article URL or title contains any of `ticket`,
 `tickets`, `drop`, `sales-phase`, `last-minute`, `resale`, `marketplace`
 (case-insensitive).
 
-## Telegram messages
+## Notifications
 
-| Trigger | Message prefix |
-|---------|----------------|
-| Target 1 changed | `🛒 Shop changed` |
-| Target 2 changed | `📄 Sales info page changed` |
-| Target 3 new matching article | `🚨 NEW TICKET ARTICLE` *(highest priority)* |
-| Target failed 3× in a row | `⚠️ Monitor broken: <target>` |
+Each alert is delivered to every configured channel in parallel:
 
-All messages use Telegram Markdown with a clickable link.
+| Trigger | Telegram message | Email subject |
+|---------|------------------|---------------|
+| Target 1 changed | `🛒 Shop changed` | `[FIFA Monitor] 🛒 Shop changed` |
+| Target 2 changed | `📄 Sales info page changed` | `[FIFA Monitor] 📄 Sales info page changed` |
+| Target 3 new matching article | `🚨 NEW TICKET ARTICLE` *(highest priority)* | `[FIFA Monitor] 🚨 NEW TICKET ARTICLE: <title>` |
+| Target failed 3× in a row | `⚠️ Monitor broken: <target>` | `[FIFA Monitor] ⚠️ Monitor broken: <target>` |
+
+Telegram messages are Markdown with clickable links. Emails are multipart
+(plain text + minimal HTML) sent via Gmail SMTP.
 
 ## Setup
 
@@ -40,33 +47,66 @@ All messages use Telegram Markdown with a clickable link.
    ```
    Look for `"chat":{"id":<number>,...`.
 
-### 2. GitHub repository setup
+### 2. (Optional but recommended) Set up Gmail email channel
+
+Email is a robust safety net for when Telegram push notifications get
+suppressed by phone settings (Focus mode, muted chat, app permissions).
+
+1. Enable 2-Step Verification on your Google account if not already on:
+   https://myaccount.google.com/security
+2. Generate an App Password: https://myaccount.google.com/apppasswords
+   - App: "Mail" (or pick "Other" and call it "FIFA Monitor")
+   - Save the 16-character password (shown only once).
+3. You'll add this as a GitHub secret in the next step.
+
+### 3. GitHub repository setup
 
 1. Create a new GitHub repo and push this code.
-2. **Settings → Secrets and variables → Actions → New repository secret**:
-   - `TELEGRAM_BOT_TOKEN` — bot token from BotFather
-   - `TELEGRAM_CHAT_ID` — your chat id
+2. **Settings → Secrets and variables → Actions → New repository secret** —
+   add the secrets for whichever channels you want:
+   - `TELEGRAM_BOT_TOKEN` — bot token from BotFather *(Telegram only)*
+   - `TELEGRAM_CHAT_ID` — your chat id *(Telegram only)*
+   - `GMAIL_USER` — your full Gmail address, e.g. `you@gmail.com` *(email only)*
+   - `GMAIL_APP_PASSWORD` — the 16-char App Password *(email only)*
+   - `EMAIL_TO` — *optional*; defaults to `GMAIL_USER` if unset
 3. **Settings → Actions → General → Workflow permissions**: ensure **Read and write permissions** is selected so the workflow can commit updated state files.
 4. The cron starts firing automatically once the workflow is on the default branch (GitHub may take ~10 min for the first scheduled run).
 
-### 3. First-run behaviour
+### 4. First-run behaviour
 
 The first time the monitor sees each target, it establishes a baseline silently
 (no alerts). From the second run onward, only changes trigger alerts.
 
-### 4. Test the pipeline
+### 5. Test the pipeline
 
 From GitHub:
 - **Actions → FIFA WC2026 Ticket Monitor → Run workflow**
-- Set **Mode** = `test` → confirms Telegram delivery.
-- Set **Mode** = `list` → prints stored state to the run log.
+- Set **Mode** = `test` → sends one test message to *every configured channel*
+  (Telegram and/or email). Both should arrive.
+- Set **Mode** = `list` → prints stored state and which channels are configured.
 
 Locally:
 ```bash
 export TELEGRAM_BOT_TOKEN=...
 export TELEGRAM_CHAT_ID=...
+export GMAIL_USER=you@gmail.com
+export GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx
 python monitor.py --test
 ```
+
+### Telegram push troubleshooting
+
+If you see Telegram messages only after opening the app (no banner / sound):
+
+1. Open the bot chat in Telegram → tap the bot name at the top → confirm the
+   bell icon is **not crossed out** (chat is unmuted).
+2. iOS: **Settings → Notifications → Telegram** → Allow Notifications: ON,
+   Sounds: ON, Badges: ON, Show Previews: Always.
+3. iOS Focus / DND: ensure Telegram is on the allowed-apps list, or that the
+   active Focus mode is off when you want alerts.
+4. Phone Settings → Battery → ensure Telegram is not background-restricted.
+
+The email channel is the safety net for when Telegram push gets suppressed.
 
 ## Local development
 
@@ -111,9 +151,12 @@ with the message `chore(state): update monitor state [skip ci]`.
   cron tick retries.
 - Concurrency group prevents an in-progress run from being killed by the next
   cron tick.
-- If `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` are unset the script logs a single
-  warning and runs in **dry-run mode** — alerts are written to the log instead
-  of being sent. Useful for local debugging.
+- If **no** notification channel is configured (neither Telegram nor Gmail
+  creds present), the script logs a warning and runs in **dry-run mode** —
+  alerts are written to the log instead of being sent. Useful for local debugging.
+- If only one channel is configured, only that channel fires; the other is
+  silently skipped. Each channel is independent — one failing never blocks
+  the other.
 
 ## Known limitation: shop target may be blocked from datacenter IPs
 

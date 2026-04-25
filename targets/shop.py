@@ -16,8 +16,7 @@ from typing import Optional
 from bs4 import BeautifulSoup
 
 import http_utils
-import notifier
-from targets import TargetResult
+from targets import AlertSpec, TargetResult
 
 LOGGER = logging.getLogger(__name__)
 
@@ -114,7 +113,7 @@ def run() -> TargetResult:
     return TargetResult(
         target=NAME,
         success=True,
-        messages=[notifier.shop_changed(URL)],
+        messages=[AlertSpec(kind="shop_changed", url=URL)],
         info=info + " CHANGED",
     )
 
