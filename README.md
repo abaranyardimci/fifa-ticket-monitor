@@ -4,6 +4,13 @@ Polls three FIFA-controlled surfaces every 15 minutes via GitHub Actions and pin
 **both Telegram and email** in parallel when something interesting changes — a
 Last-Minute Sales drop, a sales-phase update, or a new ticket-related news article.
 
+> **Sibling monitor**: this repo also runs an independent ATC re-announcement
+> monitor (`atc_monitor.py` + `.github/workflows/atc_monitor.yml`) that watches
+> `https://www.americanturkishconference.org` for the conference being put back
+> on the calendar. It shares only the Telegram/email secrets and the generic
+> notifier/emailer/http_utils helpers — separate state files, separate workflow,
+> separate cron. See [ATC monitor](#atc-monitor) at the bottom.
+
 Both channels fire on every alert, independently. If one fails (server down,
 revoked token, muted chat), the other still gets through. Either channel is
 optional — the monitor degrades gracefully to whichever you've configured.
@@ -190,16 +197,79 @@ If you need reliable shop monitoring, options are:
 
 ```
 .
-├── .github/workflows/monitor.yml
-├── monitor.py                 # CLI + orchestrator + failure tracking
-├── notifier.py                # Telegram sender, retry, message templates
+├── .github/workflows/
+│   ├── monitor.yml            # FIFA cron (every 15 min)
+│   └── atc_monitor.yml        # ATC cron (every 30 min, offset)
+├── monitor.py                 # FIFA orchestrator + failure tracking
+├── atc_monitor.py             # ATC standalone monitor (separate state)
+├── notifier.py                # Telegram sender (shared by both monitors)
+├── emailer.py                 # Gmail SMTP sender (shared by both monitors)
 ├── http_utils.py              # Shared requests session + backoff
 ├── targets/
 │   ├── __init__.py            # TargetResult dataclass
-│   ├── news.py                # Target 3 — XML sitemap + Playwright fallback
-│   ├── sales_info.py          # Target 2 — __NEXT_DATA__ + Playwright fallback
-│   └── shop.py                # Target 1 — Playwright
-├── state/                     # committed state (hashes + seen-articles JSON)
+│   ├── news.py                # FIFA target 3 — XML sitemap + Playwright fallback
+│   ├── sales_info.py          # FIFA target 2 — __NEXT_DATA__ + Playwright fallback
+│   └── shop.py                # FIFA target 1 — Playwright
+├── state/                     # committed state for both monitors (atc_* + the rest)
 ├── requirements.txt
 └── README.md
 ```
+
+---
+
+## ATC monitor
+
+A small, completely separate watcher for the **40th American-Turkish
+Conference** website (`https://www.americanturkishconference.org`). Built to
+catch the moment the conference is put back on the calendar after its
+postponement — registration link, agenda publication, year/date update,
+"rescheduled" notice, etc.
+
+### How it works
+
+| Signal | What triggers it |
+|--------|------------------|
+| 🚨 **NEW SIGNAL** | A high-signal phrase appears for the first time: `register`, `tickets`, `speakers`, `program`/`agenda` (no longer "will be published"), `2026`, `2027`, `rescheduled`, `confirmed`, `live stream`, etc. |
+| 📝 **Page changed** | Catch-all — body content hash differs from last run, and no specific keyword fired. Lower priority. |
+| ⚠️ **Monitor broken** | 3 consecutive fetch failures in a row (then counter resets). |
+
+Each alert goes to every configured channel (Telegram + email) in parallel,
+same secrets as the FIFA monitor. Subjects are prefixed `[ATC Monitor]` so
+they're easy to filter / route.
+
+### Files
+
+- `atc_monitor.py` — single self-contained script.
+- `.github/workflows/atc_monitor.yml` — cron `7,37 * * * *` (offset from FIFA's `*/15` to avoid `git push` races).
+- `state/atc_page.hash` — last-seen content hash.
+- `state/atc_keywords_seen.json` — which signal keywords have ever been seen, with first-seen timestamp.
+- `state/atc_failures.json` — consecutive-failure counter.
+
+### Running locally
+
+```bash
+source .venv/bin/activate
+python atc_monitor.py             # one normal run
+python atc_monitor.py --test      # test message via every configured channel
+python atc_monitor.py --list-state
+```
+
+### Customising the keywords
+
+Edit `KEYWORD_SIGNALS` near the top of `atc_monitor.py`. Each entry is a
+`(label, regex)` pair — add a new one and it'll fire the first time it
+matches the cleaned page text. The negative lookahead in the
+`Program / agenda published` pattern is what stops the existing
+"Agenda Will Be Published Soon" placeholder from firing on every run.
+
+### Won't this break the FIFA monitor?
+
+No. The two monitors share:
+- the same `requirements.txt`
+- the same Gmail/Telegram secrets
+- generic helpers (`notifier.send`, `emailer.send`, `http_utils.get`)
+
+They do **not** share state files, workflows, cron schedules, or
+target/message code. The ATC workflow only `git add`s `state/atc_*` files,
+rebases before push to absorb FIFA-monitor commits, and runs at minute :07 /
+:37 to stay clear of FIFA's :00 / :15 / :30 / :45 ticks.
