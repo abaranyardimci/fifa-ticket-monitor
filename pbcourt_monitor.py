@@ -260,6 +260,8 @@ def _fetch_dockets() -> List[DocketEntry]:
                 entries = _try_search_form_fallback(page)
 
             return entries
+        finally:
+            browser.close()
 
 
 def _diag_dump_clickables(page, label: str) -> None:
@@ -317,8 +319,6 @@ def _diag_dump_page(page, html: str, label: str) -> None:
     for inp in inputs[:20]:
         LOGGER.info("  input type=%s name=%r id=%r placeholder=%r",
                     inp["type"], inp["name"], inp["id"], inp["placeholder"])
-        finally:
-            browser.close()
 
 
 def _click_guest_login(page) -> None:
