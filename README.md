@@ -280,14 +280,20 @@ rebases before push to absorb FIFA-monitor commits, and runs at minute :07 /
 
 ## PB Court monitor
 
-A standalone watcher for a specific case on the **Palm Beach County Clerk
-eCaseView** system (`https://appsgp.mypalmbeachclerk.com/eCaseView/`). Hardcoded
-to case `50-2025-DR-006596-XXXA-SB` (override via `PB_COURT_CASE_NUMBER` env
-var). Emails the user when **new docket entries** appear (each new entry's
-date, type, and description shown in an HTML table).
+A watcher for a specific case on the **Palm Beach County Clerk eCaseView**
+system (`https://appsgp.mypalmbeachclerk.com/eCaseView/`). Hardcoded to case
+`50-2025-DR-006596-XXXA-SB` (override via `PB_COURT_CASE_NUMBER` env var).
+Emails the user when **new docket entries** appear, with DIN, date,
+description, and notes in an HTML table.
 
-**Email-only by design.** Telegram is intentionally skipped for this monitor —
-court docket notifications go to email for archival/recordkeeping value.
+**Runs from your Mac, not GitHub Actions.** eCaseView's reCAPTCHA v3 blocks
+all headless browsers and any non-residential IP, so the scheduled hourly
+check runs via a macOS `launchd` user agent. The GitHub Actions workflow is
+retained for **manual** testing only (`test` and `list` modes from the
+Actions tab).
+
+**Email-only by design** — Telegram is intentionally skipped here; court
+docket notifications go to email for archival/recordkeeping value.
 
 ### How it works
 
@@ -296,54 +302,111 @@ court docket notifications go to email for archival/recordkeeping value.
 | 📁 **N new docket entry/entries** | One or more new entries detected on the case (diff against `state/pbcourt_dockets_seen.json`) |
 | ⚠️ **Monitor broken** | 3 consecutive fetch failures (then counter resets) |
 
-The clerk site requires a guest-login click + form-driven case search, so the
-monitor uses Playwright (Chromium headless). On each run it:
+Each run, via system Chrome (offscreen, not headless):
 
 1. Loads the eCaseView home page.
-2. Clicks "Login as Guest User" (sets the session cookie).
-3. Navigates directly to the case-docket URL with the case number in the query string.
-4. If that yields no entries, falls back to looking for a case-search input.
-5. Parses the docket table (picks the table with the most date-like first columns).
-6. Diffs entries against the seen state by stable per-entry ID
-   `sha1(normalized(date + type + description))[:16]`.
+2. Clicks **Login as Guest User** (passes reCAPTCHA from your residential IP).
+3. Fills `#SearchRequest_CaseNumber` with the case number, clicks `#btnBeginSearch`.
+4. Clicks the case in the results table (`button.case-number`).
+5. Clicks the **Dockets & Documents** tab.
+6. Switches the DataTables length selector to **All** so every entry is rendered.
+7. Parses `#docketTable` (columns: icon, icon, DIN, Date, Description, Notes, icon, icon).
+8. Diffs entries against the seen state by stable per-entry ID
+   `sha1(DIN + Date + Description)[:16]`.
 
 First run establishes a baseline silently (no alerts).
 
 ### Files
 
-- `pbcourt_monitor.py` — single self-contained script.
-- `.github/workflows/pbcourt_monitor.yml` — cron `47 * * * *` (hourly, offset from FIFA + ATC).
-- `state/pbcourt_dockets_seen.json` — map of `entry_id → {date, type, description, first_seen}`.
+- `pbcourt_monitor.py` — the monitor script (single file).
+- `scripts/pbcourt_run.sh` — launchd wrapper (pulls latest, runs, commits state).
+- `scripts/com.user.pbcourt-monitor.plist.tpl` — launchd plist template (substituted by installer).
+- `scripts/install_launchd.sh` — installs the launchd job + prompts for Gmail creds.
+- `scripts/uninstall_launchd.sh` — removes the launchd job (leaves state + env alone).
+- `.github/workflows/pbcourt_monitor.yml` — manual-dispatch workflow (no schedule).
+- `state/pbcourt_dockets_seen.json` — map of `entry_id → {din, date, description, notes, first_seen}`.
 - `state/pbcourt_failures.json` — consecutive-failure counter.
 
-### Running locally
+### Setup on macOS
+
+One-time:
 
 ```bash
-source .venv/bin/activate
-python pbcourt_monitor.py             # one normal run
-python pbcourt_monitor.py --test      # send a test email
-python pbcourt_monitor.py --list-state
+cd ~/Documents/Claude/FIFABILET
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python -m playwright install chromium       # for ATC/FIFA tools
+# System Chrome is also required (download from google.com/chrome if missing)
+
+# Install the launchd agent (will prompt for GMAIL_USER, GMAIL_APP_PASSWORD, EMAIL_TO)
+scripts/install_launchd.sh
 ```
+
+The installer:
+- Creates `~/.config/pbcourt-monitor/env` (chmod 600) with your Gmail creds
+- Generates `~/Library/LaunchAgents/com.user.pbcourt-monitor.plist` with the repo path baked in
+- Loads it with `launchctl bootstrap gui/$UID …`
+
+After install, the job fires hourly at **minute :47**. launchd skips firings
+while the Mac is asleep; it does not run a make-up job on wake.
+
+### Running manually
+
+```bash
+# Trigger one run immediately (writes to ~/Library/Logs/pbcourt-monitor.log)
+scripts/pbcourt_run.sh
+
+# Or invoke the script directly without the wrapper
+.venv/bin/python pbcourt_monitor.py             # one normal run
+.venv/bin/python pbcourt_monitor.py --test      # send a test email only
+.venv/bin/python pbcourt_monitor.py --list-state
+```
+
+### Inspecting / debugging
+
+```bash
+# Job status
+launchctl print "gui/$UID/com.user.pbcourt-monitor"
+
+# Live log
+tail -f ~/Library/Logs/pbcourt-monitor.log
+
+# launchd's own stdout/stderr capture
+tail -f ~/Library/Logs/pbcourt-monitor.launchd.out.log
+tail -f ~/Library/Logs/pbcourt-monitor.launchd.err.log
+```
+
+### Uninstall
+
+```bash
+scripts/uninstall_launchd.sh
+```
+
+Leaves your env file (`~/.config/pbcourt-monitor/env`) and state files in
+the repo alone in case you reinstall later.
 
 ### Monitoring a different case
 
-Either edit `CASE_NUMBER` at the top of `pbcourt_monitor.py`, or set the
-`PB_COURT_CASE_NUMBER` env var (in your shell locally, or as a repository
-variable / secret in GitHub Actions). The state files are per-instance — if
-you switch cases, the next run will re-baseline the new case silently.
+Edit `CASE_NUMBER` at the top of `pbcourt_monitor.py`, OR set the
+`PB_COURT_CASE_NUMBER` env var in `~/.config/pbcourt-monitor/env`. After
+changing, delete `state/pbcourt_dockets_seen.json` so the next run
+re-baselines for the new case.
 
 ### Safety guards
 
 - If the parser returns **0 entries** but state has ≥1, the run is treated as
-  a **failure** (likely login/parsing regression or restricted access), not a
+  a **failure** (likely login regression or restricted access), not a
   "everything was deleted" event. State is preserved.
 - Hourly polling is well below any reasonable rate-limit threshold.
-- Realistic Chrome User-Agent + AutomationControlled stealth tweaks (same
-  pattern as the FIFA shop target).
+- System Chrome with `channel="chrome"`, AutomationControlled stealth tweaks,
+  and an offscreen visible window (no headless — reCAPTCHA detects it).
 
-### Won't this break the FIFA / ATC monitors?
+### Why not GitHub Actions?
 
-No. PB Court only `git add`s `state/pbcourt_*` files, uses its own concurrency
-group (`pbcourt-monitor`), rebases before push to absorb concurrent commits
-from FIFA / ATC, and runs at minute `:47` to stay clear of FIFA's
-`:00 / :15 / :30 / :45` and ATC's `:07 / :37` ticks.
+We tried. The eCaseView guest-login flow uses **reCAPTCHA v3** which:
+1. Blocks bundled Chromium (Playwright's default) by fingerprint.
+2. Blocks any headless browser, including system Chrome in headless mode.
+3. Heavily penalizes datacenter IPs (GitHub Actions, AWS, GCP).
+
+The only combination that scores high enough is: system Chrome + visible
+window + residential IP. Running locally via launchd satisfies all three.

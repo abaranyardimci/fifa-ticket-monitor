@@ -1,18 +1,21 @@
 name: Palm Beach Court Docket Monitor
 
-# Runs at :47 every hour — offset from the FIFA monitor's :00/:15/:30/:45
-# slots and the ATC monitor's :07/:37 slots so the three workflows don't
-# race for `git push` on the shared `state/` directory.
+# NOTE: scheduled cron is disabled — eCaseView's reCAPTCHA blocks Playwright
+# from GitHub Actions IPs (and from any headless browser anywhere). The
+# scheduled hourly check now runs on the user's Mac via a launchd agent —
+# see scripts/install_launchd.sh and the "PB Court monitor" README section.
+#
+# This workflow remains as a manual-dispatch entry point for testing the
+# email pipeline (mode=test) and inspecting state (mode=list). Don't expect
+# mode=run to succeed from GitHub Actions.
 on:
-  schedule:
-    - cron: '47 * * * *'
   workflow_dispatch:
     inputs:
       mode:
         description: 'Mode'
         type: choice
         options: [run, test, list]
-        default: run
+        default: test
 
 permissions:
   contents: write
