@@ -48,10 +48,6 @@ CASE_NUMBER = os.environ.get(
 ).strip()
 
 BASE_URL = "https://appsgp.mypalmbeachclerk.com/eCaseView/"
-CASE_URL = (
-    "https://appsgp.mypalmbeachclerk.com/eCaseView/CaseData/Dockets"
-    f"?CaseNumber={CASE_NUMBER}"
-)
 
 NAME = "pbcourt"
 SUBJECT_PREFIX = "[PB Court Monitor]"
@@ -77,9 +73,10 @@ _DATE_PATTERNS = (
 @dataclass(frozen=True)
 class DocketEntry:
     id: str
-    date: str
-    type: str
+    din: str          # Docket Index Number — stable per-entry identifier
+    date: str         # Effective Date (MM/DD/YYYY as displayed)
     description: str
+    notes: str
 
 
 # ---------- channels ----------
@@ -168,9 +165,10 @@ def _run_once() -> RunResult:
             continue
         new_entries.append(entry)
         seen[entry.id] = {
+            "din": entry.din,
             "date": entry.date,
-            "type": entry.type,
             "description": entry.description,
+            "notes": entry.notes,
             "first_seen": now_iso,
         }
 
@@ -192,13 +190,21 @@ def _run_once() -> RunResult:
 
 # ---------- fetcher (Playwright) ----------
 
-def _fetch_dockets() -> List[DocketEntry]:
-    """Log in as guest, navigate to the case docket page, parse entries.
+# Selectors discovered by reverse-engineering the eCaseView pages.
+# If the site changes its markup, update these.
+SEL_GUEST_LOGIN = "button:has-text('Login as Guest')"
+SEL_CASE_NUMBER_INPUT = "#SearchRequest_CaseNumber"
+SEL_SEARCH_SUBMIT = "#btnBeginSearch"
+SEL_CASE_RESULT_BUTTON = "button.case-number"
 
-    Strategy: click "Login as Guest User" on the home page (which establishes
-    a session cookie), then navigate directly to the docket URL with the case
-    number in the query string. If the direct URL doesn't yield a docket
-    table, fall back to looking for a case-search form.
+
+def _fetch_dockets() -> List[DocketEntry]:
+    """Login as guest, search by case number, open the case, parse dockets.
+
+    reCAPTCHA v3 on the eCaseView guest-login flow blocks Playwright's bundled
+    Chromium AND any headless mode (system Chrome included). The only reliable
+    bypass is system Chrome with `headless=False`. We position the window
+    offscreen so it doesn't steal focus.
     """
     try:
         from playwright.sync_api import sync_playwright
@@ -209,292 +215,186 @@ def _fetch_dockets() -> List[DocketEntry]:
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(
-            headless=True,
+            channel="chrome",      # system Chrome — bundled Chromium gets fingerprinted
+            headless=False,        # headless is fingerprinted; offscreen hides the window
             args=[
                 "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
+                "--window-position=-2400,-2400",
+                "--window-size=1280,900",
             ],
         )
         try:
-            context = browser.new_context(
-                user_agent=http_utils.USER_AGENT,
-                locale="en-US",
-                viewport={"width": 1280, "height": 900},
-                extra_http_headers={
-                    "Accept-Language": "en-US,en;q=0.9",
-                    "Sec-Ch-Ua": '"Chromium";v="126", "Not.A/Brand";v="24"',
-                    "Sec-Ch-Ua-Mobile": "?0",
-                    "Sec-Ch-Ua-Platform": '"macOS"',
-                },
-            )
+            context = browser.new_context(viewport={"width": 1280, "height": 900})
             context.add_init_script(
                 "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
             )
             page = context.new_page()
 
-            # Step 1: home page → click guest login.
+            # 1. Home → click guest login. Mouse moves help reCAPTCHA score.
             page.goto(BASE_URL, wait_until="domcontentloaded", timeout=60_000)
-            page.wait_for_timeout(1500)
-            LOGGER.info("DIAG home: url=%s title=%r", page.url, page.title())
-            _diag_dump_clickables(page, "home")
-
-            _click_guest_login(page)
-            # /GuestIn is a transient page (placeholder title "Loading ..."),
-            # so wait for the redirect chain to settle before we trust the URL.
-            try:
-                page.wait_for_load_state("networkidle", timeout=30_000)
-            except Exception as exc:  # noqa: BLE001
-                LOGGER.warning("DIAG networkidle wait after login click failed: %s", exc)
-            page.wait_for_timeout(3000)
-            LOGGER.info("DIAG after-login-settle: url=%s title=%r", page.url, page.title())
-            _diag_dump_clickables(page, "post-login")
-            _diag_dump_page(page, page.content(), "post-login")
-
-            # If we landed on an interstitial (terms/accept page), click through.
-            _click_through_interstitial(page)
-
-            # Step 2: navigate directly to the case docket URL.
-            page.goto(CASE_URL, wait_until="domcontentloaded", timeout=60_000)
-            try:
-                page.wait_for_load_state("networkidle", timeout=20_000)
-            except Exception as exc:  # noqa: BLE001
-                LOGGER.warning("DIAG networkidle wait after CASE_URL goto failed: %s", exc)
             page.wait_for_timeout(2000)
-            html = page.content()
-            LOGGER.info("DIAG case-page: url=%s title=%r html_len=%s", page.url, page.title(), len(html))
-            _diag_dump_page(page, html, "case-page")
-
-            entries = _parse_dockets(html)
-
-            if entries:
-                LOGGER.info("pbcourt: direct CASE_URL yielded %s entries", len(entries))
-            else:
-                LOGGER.warning(
-                    "pbcourt: direct CASE_URL yielded no entries; "
-                    "trying case-search form fallback"
+            _human_pause(page)
+            page.locator(SEL_GUEST_LOGIN).first.click(timeout=15_000)
+            page.wait_for_load_state("networkidle", timeout=30_000)
+            page.wait_for_timeout(2000)
+            if "/Search" not in page.url:
+                raise RuntimeError(
+                    f"Guest login failed (reCAPTCHA likely blocked). "
+                    f"Landed on {page.url} instead of /Search"
                 )
-                entries = _try_search_form_fallback(page)
+            LOGGER.info("pbcourt: guest login OK on %s", page.url)
 
+            # 2. Fill case number, submit search.
+            page.locator(SEL_CASE_NUMBER_INPUT).fill(CASE_NUMBER)
+            page.wait_for_timeout(500)
+            page.locator(SEL_SEARCH_SUBMIT).click(timeout=15_000)
+            page.wait_for_load_state("networkidle", timeout=30_000)
+            page.wait_for_timeout(2500)
+            if "SearchResults" not in page.url:
+                raise RuntimeError(f"Search submit failed; landed on {page.url}")
+
+            # 3. Click the case in results.
+            case_btn = page.locator(SEL_CASE_RESULT_BUTTON).first
+            if case_btn.count() == 0:
+                LOGGER.warning("pbcourt: case %s not in search results", CASE_NUMBER)
+                return []
+            case_btn.click(timeout=15_000)
+            page.wait_for_load_state("networkidle", timeout=30_000)
+            page.wait_for_timeout(3000)
+            LOGGER.info("pbcourt: case-detail url=%s", page.url)
+
+            # 4. Click the "Dockets & Documents" tab.
+            dockets_tab = page.locator("a:has-text('Dockets & Documents')").first
+            if dockets_tab.count() == 0:
+                raise RuntimeError("Dockets & Documents tab not found on case-detail page")
+            dockets_tab.click(timeout=15_000)
+            page.wait_for_load_state("networkidle", timeout=30_000)
+            page.wait_for_timeout(3000)
+            LOGGER.info("pbcourt: dockets url=%s", page.url)
+
+            # 5. Page size: default shows ~25 entries; we want ALL so we don't
+            # miss newer entries that scroll off page 1. Try the DataTables
+            # length selector with several common names/values. Falls back to
+            # whatever default the page uses if no selector matches.
+            _set_pagination_to_all(page)
+
+            html = page.content()
+            entries = _parse_dockets(html)
+            LOGGER.info("pbcourt: parsed %s docket entries", len(entries))
             return entries
         finally:
             browser.close()
 
 
-def _diag_dump_clickables(page, label: str) -> None:
-    """Log every visible button/anchor that mentions login/guest/search."""
-    try:
-        items = page.eval_on_selector_all(
-            "a, button, input[type=submit], input[type=button]",
-            "els => els.map(e => ({"
-            " tag: e.tagName,"
-            " text: (e.innerText || e.value || '').trim().slice(0, 80),"
-            " href: e.getAttribute('href') || '',"
-            " name: e.getAttribute('name') || '',"
-            " id: e.id || ''"
-            " }))",
-        )
-    except Exception as exc:  # noqa: BLE001
-        LOGGER.warning("DIAG %s: failed to enumerate clickables: %s", label, exc)
-        return
-    keywords = ("guest", "login", "search", "case", "docket", "submit")
-    matches = [
-        it for it in items
-        if any(kw in (it["text"] + " " + it["href"] + " " + it["name"] + " " + it["id"]).lower()
-               for kw in keywords)
-    ]
-    LOGGER.info("DIAG %s clickables (filtered, %s of %s total):", label, len(matches), len(items))
-    for it in matches[:25]:
-        LOGGER.info("  %s text=%r href=%r name=%r id=%r",
-                    it["tag"], it["text"], it["href"], it["name"], it["id"])
+def _human_pause(page) -> None:
+    """Small mouse movements to look human-ish before clicking reCAPTCHA buttons."""
+    page.mouse.move(400, 300)
+    page.wait_for_timeout(300)
+    page.mouse.move(600, 400)
+    page.wait_for_timeout(400)
 
 
-def _diag_dump_page(page, html: str, label: str) -> None:
-    """Log page body text snippet, table count, form count."""
-    try:
-        body_text = page.evaluate("() => (document.body && document.body.innerText) || ''")
-    except Exception as exc:  # noqa: BLE001
-        body_text = f"<evaluate failed: {exc}>"
-    snippet = " ".join((body_text or "").split())[:1500]
-    LOGGER.info("DIAG %s body_text (first 1500 chars): %s", label, snippet)
-    try:
-        table_count = page.eval_on_selector_all("table", "els => els.length")
-        form_count = page.eval_on_selector_all("form", "els => els.length")
-        input_count = page.eval_on_selector_all("input", "els => els.length")
-    except Exception as exc:  # noqa: BLE001
-        LOGGER.warning("DIAG %s: failed to count elements: %s", label, exc)
-        return
-    LOGGER.info("DIAG %s tables=%s forms=%s inputs=%s", label, table_count, form_count, input_count)
-    # Dump the input names so we can spot a case-number field.
-    try:
-        inputs = page.eval_on_selector_all(
-            "input",
-            "els => els.map(e => ({type: e.type, name: e.name||'', id: e.id||'', placeholder: e.placeholder||''}))",
-        )
-    except Exception:
-        inputs = []
-    for inp in inputs[:20]:
-        LOGGER.info("  input type=%s name=%r id=%r placeholder=%r",
-                    inp["type"], inp["name"], inp["id"], inp["placeholder"])
+def _set_pagination_to_all(page) -> None:
+    """Switch DataTables pagination to show all entries on one page.
 
-
-def _click_through_interstitial(page) -> None:
-    """If the post-login page is a Terms/Accept interstitial, click the button.
-
-    Many ASP.NET court sites show a disclaimer page after guest login. We try
-    a handful of common labels; if none match, we silently continue.
+    The eCaseView docket table is a standard DataTables instance. The length
+    selector is typically a <select> with id like '<tableId>_length' or name
+    like '<tableId>_length'. We try a few patterns; if none work, we use what
+    the page gave us (and may miss entries past page 1).
     """
     selectors = (
-        "button:has-text('Accept')",
-        "button:has-text('I Agree')",
-        "button:has-text('Agree')",
-        "button:has-text('Continue')",
-        "input[type=submit][value*='Accept' i]",
-        "input[type=submit][value*='Agree' i]",
-        "input[type=submit][value*='Continue' i]",
-        "a:has-text('Accept')",
-        "a:has-text('I Agree')",
+        "select[name='docketTable_length']",
+        "select#docketTable_length",
+        "select[name*='length' i]",
     )
     for selector in selectors:
         try:
-            locator = page.locator(selector).first
-            if locator.count() > 0:
-                LOGGER.info("DIAG interstitial: clicking %s", selector)
-                locator.click(timeout=10_000)
+            loc = page.locator(selector).first
+            if loc.count() == 0:
+                continue
+            # DataTables uses -1 for "All". Some apps use a literal '-1' option
+            # value; others use the visible text 'All'. Try both.
+            try:
+                loc.select_option(value="-1")
+            except Exception:
                 try:
-                    page.wait_for_load_state("networkidle", timeout=20_000)
+                    loc.select_option(label="All")
                 except Exception:
-                    pass
-                page.wait_for_timeout(1500)
-                LOGGER.info("DIAG post-interstitial: url=%s title=%r", page.url, page.title())
-                return
+                    continue
+            page.wait_for_load_state("networkidle", timeout=15_000)
+            page.wait_for_timeout(1500)
+            LOGGER.info("pbcourt: pagination set to All via %s", selector)
+            return
         except Exception as exc:  # noqa: BLE001
-            LOGGER.debug("DIAG interstitial selector %s failed: %s", selector, exc)
-    LOGGER.info("DIAG interstitial: no Accept/Agree/Continue button found")
-
-
-def _click_guest_login(page) -> None:
-    """Try several strategies to click the guest-login link/button."""
-    # Strategy 1: visible link/button text "Guest".
-    selectors = (
-        "a:has-text('Login as Guest')",
-        "button:has-text('Login as Guest')",
-        "a:has-text('Guest User')",
-        "a:has-text('Guest')",
-        "input[type=submit][value*='Guest' i]",
+            LOGGER.debug("pbcourt: pagination selector %s failed: %s", selector, exc)
+    LOGGER.warning(
+        "pbcourt: could not switch pagination to 'All'; "
+        "may only see first page of entries"
     )
-    for selector in selectors:
-        try:
-            locator = page.locator(selector).first
-            if locator.count() > 0:
-                locator.click(timeout=10_000)
-                page.wait_for_load_state("domcontentloaded", timeout=30_000)
-                page.wait_for_timeout(1500)
-                LOGGER.debug("pbcourt: guest-login clicked via %s", selector)
-                return
-        except Exception as exc:  # noqa: BLE001
-            LOGGER.debug("pbcourt: guest-login selector %s failed: %s", selector, exc)
-
-    # If nothing matched, log and continue — direct CASE_URL navigation may
-    # still work if the session is already considered guest-authenticated.
-    LOGGER.warning("pbcourt: no guest-login button found; continuing anyway")
-
-
-def _try_search_form_fallback(page) -> List[DocketEntry]:
-    """Look for a case-number search input and submit it."""
-    # Common ASP.NET clerk-site input names.
-    input_candidates = (
-        "input[name*='CaseNumber' i]",
-        "input[id*='CaseNumber' i]",
-        "input[name*='case' i][type=text]",
-        "input[placeholder*='case' i]",
-    )
-    for selector in input_candidates:
-        try:
-            locator = page.locator(selector).first
-            if locator.count() > 0:
-                locator.fill(CASE_NUMBER)
-                # Try Enter, then look for a submit button.
-                try:
-                    locator.press("Enter")
-                except Exception:
-                    pass
-                page.wait_for_timeout(2000)
-                html = page.content()
-                entries = _parse_dockets(html)
-                if entries:
-                    LOGGER.info(
-                        "pbcourt: search-form fallback via %s yielded %s entries",
-                        selector, len(entries),
-                    )
-                    return entries
-        except Exception as exc:  # noqa: BLE001
-            LOGGER.debug("pbcourt: search-form selector %s failed: %s", selector, exc)
-    return []
 
 
 # ---------- parser ----------
 
 def _parse_dockets(html: str) -> List[DocketEntry]:
-    """Find the docket table in rendered HTML and extract entries.
+    """Extract docket entries from the eCaseView Dockets & Documents page.
 
-    Defensive strategy: scan all <table> elements, score each by how many
-    rows have a date-like first column, pick the highest-scoring table.
+    Target table: <table id="docketTable"> with columns
+        [icon][icon][DIN][Effective Date][Description][Notes][icon][icon].
+    Falls back to a defensive scan if id="docketTable" isn't found, looking
+    for any table where multiple rows have a date in column index 3.
     """
     soup = BeautifulSoup(html, "lxml")
-    best_table = None
-    best_score = 0
-    for table in soup.find_all("table"):
-        score = _score_docket_table(table)
-        if score > best_score:
-            best_score = score
-            best_table = table
 
-    if best_table is None or best_score < 1:
-        return []
+    table = soup.find("table", id="docketTable")
+    if table is None:
+        # Defensive fallback in case the id changes.
+        best, best_score = None, 0
+        for candidate in soup.find_all("table"):
+            score = _score_docket_table(candidate)
+            if score > best_score:
+                best, best_score = candidate, score
+        table = best
+        if table is None or best_score < 1:
+            return []
 
     entries: List[DocketEntry] = []
     seen_ids: set[str] = set()
-    for row in best_table.find_all("tr"):
+    for row in table.find_all("tr"):
         cells = row.find_all(["td", "th"])
-        if len(cells) < 2:
+        if len(cells) < 6:
             continue
-        # Skip header rows (cells are all <th>).
         if all(cell.name == "th" for cell in cells):
             continue
         texts = [_clean_text(c.get_text(separator=" ", strip=True)) for c in cells]
-        if not _looks_like_date(texts[0]):
+        din = texts[2]
+        date = texts[3]
+        description = texts[4]
+        notes = texts[5]
+        if not din or not _looks_like_date(date) or not description:
             continue
-        date = texts[0]
-        if len(texts) >= 3:
-            type_ = texts[1]
-            description = " ".join(texts[2:]).strip()
-        else:
-            type_ = ""
-            description = texts[1]
-        if not description:
-            continue
-        entry_id = _entry_id(date, type_, description)
+        entry_id = _entry_id(din, date, description)
         if entry_id in seen_ids:
             continue
         seen_ids.add(entry_id)
         entries.append(DocketEntry(
             id=entry_id,
+            din=din,
             date=date,
-            type=type_,
             description=description,
+            notes=notes,
         ))
     return entries
 
 
 def _score_docket_table(table) -> int:
-    """Count rows in this table whose first cell looks like a date."""
+    """Count rows where column index 3 looks like a date (fallback heuristic)."""
     count = 0
     for row in table.find_all("tr"):
         cells = row.find_all(["td", "th"])
-        if len(cells) < 2:
+        if len(cells) < 4:
             continue
-        first = _clean_text(cells[0].get_text(separator=" ", strip=True))
-        if _looks_like_date(first):
+        date_cell = _clean_text(cells[3].get_text(separator=" ", strip=True))
+        if _looks_like_date(date_cell):
             count += 1
     return count
 
@@ -511,11 +411,12 @@ def _clean_text(text: str) -> str:
     return " ".join(text.split())
 
 
-def _entry_id(date: str, type_: str, description: str) -> str:
-    """Stable per-entry ID. Normalized so cosmetic re-formatting doesn't churn."""
+def _entry_id(din: str, date: str, description: str) -> str:
+    """Stable per-entry ID. DIN is the primary stable identifier; date + a
+    small slice of description disambiguate in case DINs are ever reused."""
     norm = "|".join((
+        _clean_text(din).lower(),
         _clean_text(date).lower(),
-        _clean_text(type_).lower(),
         _clean_text(description).lower(),
     ))
     return hashlib.sha1(norm.encode("utf-8")).hexdigest()[:16]
@@ -533,31 +434,39 @@ def _msg_new_entries(entries: List[DocketEntry]) -> tuple[str, str, str]:
         "",
     ]
     for entry in entries:
-        text_lines.append(f"- {entry.date}  [{entry.type or 'N/A'}]  {entry.description}")
-    text_lines += ["", f"Case URL: {CASE_URL}"]
+        line = f"- DIN {entry.din}  {entry.date}  {entry.description}"
+        if entry.notes:
+            line += f"  [Notes: {entry.notes}]"
+        text_lines.append(line)
+    text_lines += ["", f"Case search: {BASE_URL}"]
     text_body = "\n".join(text_lines)
 
     rows_html = "".join(
         f"<tr>"
+        f"<td style='padding:6px 10px;border:1px solid #ddd;white-space:nowrap;text-align:right'>{_html_escape(e.din)}</td>"
         f"<td style='padding:6px 10px;border:1px solid #ddd;white-space:nowrap'>{_html_escape(e.date)}</td>"
-        f"<td style='padding:6px 10px;border:1px solid #ddd;white-space:nowrap'>{_html_escape(e.type) or '&mdash;'}</td>"
         f"<td style='padding:6px 10px;border:1px solid #ddd'>{_html_escape(e.description)}</td>"
+        f"<td style='padding:6px 10px;border:1px solid #ddd;color:#555;font-size:13px'>{_html_escape(e.notes) or '&mdash;'}</td>"
         f"</tr>"
         for e in entries
     )
     html_body = (
         "<html><body style=\"font-family:-apple-system,Segoe UI,Roboto,sans-serif;"
-        "color:#111;max-width:760px;\">"
+        "color:#111;max-width:900px;\">"
         f"<p><b>{n} new docket {noun}</b> detected on case "
         f"<code>{_html_escape(CASE_NUMBER)}</code>.</p>"
         "<table style='border-collapse:collapse;font-size:14px;margin-top:8px'>"
         "<thead><tr>"
+        "<th style='padding:6px 10px;border:1px solid #ddd;background:#f4f4f4;text-align:right'>DIN</th>"
         "<th style='padding:6px 10px;border:1px solid #ddd;background:#f4f4f4;text-align:left'>Date</th>"
-        "<th style='padding:6px 10px;border:1px solid #ddd;background:#f4f4f4;text-align:left'>Type</th>"
         "<th style='padding:6px 10px;border:1px solid #ddd;background:#f4f4f4;text-align:left'>Description</th>"
+        "<th style='padding:6px 10px;border:1px solid #ddd;background:#f4f4f4;text-align:left'>Notes</th>"
         "</tr></thead>"
         f"<tbody>{rows_html}</tbody></table>"
-        f'<p style="margin-top:14px"><a href="{_html_escape(CASE_URL)}">Open case docket</a></p>'
+        f"<p style='margin-top:14px;font-size:13px;color:#555'>"
+        f"To view: go to <a href='{_html_escape(BASE_URL)}'>{_html_escape(BASE_URL)}</a>, "
+        f"click <i>Login as Guest User</i>, then search for case <code>{_html_escape(CASE_NUMBER)}</code>."
+        f"</p>"
         "</body></html>"
     )
     return subject, text_body, html_body
@@ -636,7 +545,7 @@ def _cmd_test() -> int:
 
 def _cmd_list_state() -> int:
     print(f"Case number: {CASE_NUMBER}")
-    print(f"Case URL:    {CASE_URL}")
+    print(f"Entry URL:   {BASE_URL} (login as guest, then search)")
     print()
     seen = _load_seen()
     print(f"Docket entries seen: {len(seen)}")
@@ -646,12 +555,12 @@ def _cmd_list_state() -> int:
             seen.items(), key=lambda kv: kv[1].get("first_seen", ""), reverse=True
         )[:10]
         for entry_id, meta in items:
+            din = meta.get("din", "?")
             date = meta.get("date", "?")
-            type_ = meta.get("type", "") or "—"
             desc = meta.get("description", "")
             if len(desc) > 90:
                 desc = desc[:87] + "..."
-            print(f"  [{entry_id}] {date} [{type_}] {desc}")
+            print(f"  [{entry_id}] DIN {din:>4}  {date}  {desc}")
     print()
     print(f"Consecutive failures: {_load_failures()}")
     print()
