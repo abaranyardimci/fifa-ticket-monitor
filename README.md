@@ -4,12 +4,12 @@ Polls three FIFA-controlled surfaces every 15 minutes via GitHub Actions and pin
 **both Telegram and email** in parallel when something interesting changes — a
 Last-Minute Sales drop, a sales-phase update, or a new ticket-related news article.
 
-> **Sibling monitor**: this repo also runs an independent ATC re-announcement
-> monitor (`atc_monitor.py` + `.github/workflows/atc_monitor.yml`) that watches
-> `https://www.americanturkishconference.org` for the conference being put back
-> on the calendar. It shares only the Telegram/email secrets and the generic
-> notifier/emailer/http_utils helpers — separate state files, separate workflow,
-> separate cron. See [ATC monitor](#atc-monitor) at the bottom.
+> **Sibling monitors**: this repo also runs two independent monitors that share
+> only the email/Telegram secrets and the generic `notifier`/`emailer`/`http_utils`
+> helpers — separate state files, separate workflows, separate crons.
+> - **ATC re-announcement monitor** (`atc_monitor.py`) — see [ATC monitor](#atc-monitor).
+> - **Palm Beach County court docket monitor** (`pbcourt_monitor.py`) — see
+>   [PB Court monitor](#pb-court-monitor).
 
 Both channels fire on every alert, independently. If one fails (server down,
 revoked token, muted chat), the other still gets through. Either channel is
@@ -198,13 +198,15 @@ If you need reliable shop monitoring, options are:
 ```
 .
 ├── .github/workflows/
-│   ├── monitor.yml            # FIFA cron (every 15 min)
-│   └── atc_monitor.yml        # ATC cron (every 30 min, offset)
-├── monitor.py                 # FIFA orchestrator + failure tracking
-├── atc_monitor.py             # ATC standalone monitor (separate state)
-├── notifier.py                # Telegram sender (shared by both monitors)
-├── emailer.py                 # Gmail SMTP sender (shared by both monitors)
-├── http_utils.py              # Shared requests session + backoff
+│   ├── monitor.yml              # FIFA cron (every 15 min)
+│   ├── atc_monitor.yml          # ATC cron (every 30 min, offset)
+│   └── pbcourt_monitor.yml      # PB Court cron (hourly at :47, offset)
+├── monitor.py                   # FIFA orchestrator + failure tracking
+├── atc_monitor.py               # ATC standalone monitor (separate state)
+├── pbcourt_monitor.py           # PB Court docket monitor (separate state)
+├── notifier.py                  # Telegram sender (shared)
+├── emailer.py                   # Gmail SMTP sender (shared)
+├── http_utils.py                # Shared requests session + backoff
 ├── targets/
 │   ├── __init__.py            # TargetResult dataclass
 │   ├── news.py                # FIFA target 3 — XML sitemap + Playwright fallback
@@ -273,3 +275,75 @@ They do **not** share state files, workflows, cron schedules, or
 target/message code. The ATC workflow only `git add`s `state/atc_*` files,
 rebases before push to absorb FIFA-monitor commits, and runs at minute :07 /
 :37 to stay clear of FIFA's :00 / :15 / :30 / :45 ticks.
+
+---
+
+## PB Court monitor
+
+A standalone watcher for a specific case on the **Palm Beach County Clerk
+eCaseView** system (`https://appsgp.mypalmbeachclerk.com/eCaseView/`). Hardcoded
+to case `50-2025-DR-006596-XXXA-SB` (override via `PB_COURT_CASE_NUMBER` env
+var). Emails the user when **new docket entries** appear (each new entry's
+date, type, and description shown in an HTML table).
+
+**Email-only by design.** Telegram is intentionally skipped for this monitor —
+court docket notifications go to email for archival/recordkeeping value.
+
+### How it works
+
+| Signal | What triggers it |
+|--------|------------------|
+| 📁 **N new docket entry/entries** | One or more new entries detected on the case (diff against `state/pbcourt_dockets_seen.json`) |
+| ⚠️ **Monitor broken** | 3 consecutive fetch failures (then counter resets) |
+
+The clerk site requires a guest-login click + form-driven case search, so the
+monitor uses Playwright (Chromium headless). On each run it:
+
+1. Loads the eCaseView home page.
+2. Clicks "Login as Guest User" (sets the session cookie).
+3. Navigates directly to the case-docket URL with the case number in the query string.
+4. If that yields no entries, falls back to looking for a case-search input.
+5. Parses the docket table (picks the table with the most date-like first columns).
+6. Diffs entries against the seen state by stable per-entry ID
+   `sha1(normalized(date + type + description))[:16]`.
+
+First run establishes a baseline silently (no alerts).
+
+### Files
+
+- `pbcourt_monitor.py` — single self-contained script.
+- `.github/workflows/pbcourt_monitor.yml` — cron `47 * * * *` (hourly, offset from FIFA + ATC).
+- `state/pbcourt_dockets_seen.json` — map of `entry_id → {date, type, description, first_seen}`.
+- `state/pbcourt_failures.json` — consecutive-failure counter.
+
+### Running locally
+
+```bash
+source .venv/bin/activate
+python pbcourt_monitor.py             # one normal run
+python pbcourt_monitor.py --test      # send a test email
+python pbcourt_monitor.py --list-state
+```
+
+### Monitoring a different case
+
+Either edit `CASE_NUMBER` at the top of `pbcourt_monitor.py`, or set the
+`PB_COURT_CASE_NUMBER` env var (in your shell locally, or as a repository
+variable / secret in GitHub Actions). The state files are per-instance — if
+you switch cases, the next run will re-baseline the new case silently.
+
+### Safety guards
+
+- If the parser returns **0 entries** but state has ≥1, the run is treated as
+  a **failure** (likely login/parsing regression or restricted access), not a
+  "everything was deleted" event. State is preserved.
+- Hourly polling is well below any reasonable rate-limit threshold.
+- Realistic Chrome User-Agent + AutomationControlled stealth tweaks (same
+  pattern as the FIFA shop target).
+
+### Won't this break the FIFA / ATC monitors?
+
+No. PB Court only `git add`s `state/pbcourt_*` files, uses its own concurrency
+group (`pbcourt-monitor`), rebases before push to absorb concurrent commits
+from FIFA / ATC, and runs at minute `:47` to stay clear of FIFA's
+`:00 / :15 / :30 / :45` and ATC's `:07 / :37` ticks.
