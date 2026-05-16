@@ -234,12 +234,20 @@ def _fetch_dockets() -> List[DocketEntry]:
 
             # Step 1: home page → click guest login.
             page.goto(BASE_URL, wait_until="domcontentloaded", timeout=60_000)
+            page.wait_for_timeout(1500)
+            LOGGER.info("DIAG home: url=%s title=%r", page.url, page.title())
+            _diag_dump_clickables(page, "home")
+
             _click_guest_login(page)
+            LOGGER.info("DIAG after-login-click: url=%s title=%r", page.url, page.title())
 
             # Step 2: navigate directly to the case docket URL.
             page.goto(CASE_URL, wait_until="domcontentloaded", timeout=60_000)
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(3000)
             html = page.content()
+            LOGGER.info("DIAG case-page: url=%s title=%r html_len=%s", page.url, page.title(), len(html))
+            _diag_dump_page(page, html, "case-page")
+
             entries = _parse_dockets(html)
 
             if entries:
@@ -252,6 +260,63 @@ def _fetch_dockets() -> List[DocketEntry]:
                 entries = _try_search_form_fallback(page)
 
             return entries
+
+
+def _diag_dump_clickables(page, label: str) -> None:
+    """Log every visible button/anchor that mentions login/guest/search."""
+    try:
+        items = page.eval_on_selector_all(
+            "a, button, input[type=submit], input[type=button]",
+            "els => els.map(e => ({"
+            " tag: e.tagName,"
+            " text: (e.innerText || e.value || '').trim().slice(0, 80),"
+            " href: e.getAttribute('href') || '',"
+            " name: e.getAttribute('name') || '',"
+            " id: e.id || ''"
+            " }))",
+        )
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.warning("DIAG %s: failed to enumerate clickables: %s", label, exc)
+        return
+    keywords = ("guest", "login", "search", "case", "docket", "submit")
+    matches = [
+        it for it in items
+        if any(kw in (it["text"] + " " + it["href"] + " " + it["name"] + " " + it["id"]).lower()
+               for kw in keywords)
+    ]
+    LOGGER.info("DIAG %s clickables (filtered, %s of %s total):", label, len(matches), len(items))
+    for it in matches[:25]:
+        LOGGER.info("  %s text=%r href=%r name=%r id=%r",
+                    it["tag"], it["text"], it["href"], it["name"], it["id"])
+
+
+def _diag_dump_page(page, html: str, label: str) -> None:
+    """Log page body text snippet, table count, form count."""
+    try:
+        body_text = page.evaluate("() => (document.body && document.body.innerText) || ''")
+    except Exception as exc:  # noqa: BLE001
+        body_text = f"<evaluate failed: {exc}>"
+    snippet = " ".join((body_text or "").split())[:1500]
+    LOGGER.info("DIAG %s body_text (first 1500 chars): %s", label, snippet)
+    try:
+        table_count = page.eval_on_selector_all("table", "els => els.length")
+        form_count = page.eval_on_selector_all("form", "els => els.length")
+        input_count = page.eval_on_selector_all("input", "els => els.length")
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.warning("DIAG %s: failed to count elements: %s", label, exc)
+        return
+    LOGGER.info("DIAG %s tables=%s forms=%s inputs=%s", label, table_count, form_count, input_count)
+    # Dump the input names so we can spot a case-number field.
+    try:
+        inputs = page.eval_on_selector_all(
+            "input",
+            "els => els.map(e => ({type: e.type, name: e.name||'', id: e.id||'', placeholder: e.placeholder||''}))",
+        )
+    except Exception:
+        inputs = []
+    for inp in inputs[:20]:
+        LOGGER.info("  input type=%s name=%r id=%r placeholder=%r",
+                    inp["type"], inp["name"], inp["id"], inp["placeholder"])
         finally:
             browser.close()
 
