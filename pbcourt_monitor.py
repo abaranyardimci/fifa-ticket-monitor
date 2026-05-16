@@ -239,11 +239,27 @@ def _fetch_dockets() -> List[DocketEntry]:
             _diag_dump_clickables(page, "home")
 
             _click_guest_login(page)
-            LOGGER.info("DIAG after-login-click: url=%s title=%r", page.url, page.title())
+            # /GuestIn is a transient page (placeholder title "Loading ..."),
+            # so wait for the redirect chain to settle before we trust the URL.
+            try:
+                page.wait_for_load_state("networkidle", timeout=30_000)
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.warning("DIAG networkidle wait after login click failed: %s", exc)
+            page.wait_for_timeout(3000)
+            LOGGER.info("DIAG after-login-settle: url=%s title=%r", page.url, page.title())
+            _diag_dump_clickables(page, "post-login")
+            _diag_dump_page(page, page.content(), "post-login")
+
+            # If we landed on an interstitial (terms/accept page), click through.
+            _click_through_interstitial(page)
 
             # Step 2: navigate directly to the case docket URL.
             page.goto(CASE_URL, wait_until="domcontentloaded", timeout=60_000)
-            page.wait_for_timeout(3000)
+            try:
+                page.wait_for_load_state("networkidle", timeout=20_000)
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.warning("DIAG networkidle wait after CASE_URL goto failed: %s", exc)
+            page.wait_for_timeout(2000)
             html = page.content()
             LOGGER.info("DIAG case-page: url=%s title=%r html_len=%s", page.url, page.title(), len(html))
             _diag_dump_page(page, html, "case-page")
@@ -319,6 +335,41 @@ def _diag_dump_page(page, html: str, label: str) -> None:
     for inp in inputs[:20]:
         LOGGER.info("  input type=%s name=%r id=%r placeholder=%r",
                     inp["type"], inp["name"], inp["id"], inp["placeholder"])
+
+
+def _click_through_interstitial(page) -> None:
+    """If the post-login page is a Terms/Accept interstitial, click the button.
+
+    Many ASP.NET court sites show a disclaimer page after guest login. We try
+    a handful of common labels; if none match, we silently continue.
+    """
+    selectors = (
+        "button:has-text('Accept')",
+        "button:has-text('I Agree')",
+        "button:has-text('Agree')",
+        "button:has-text('Continue')",
+        "input[type=submit][value*='Accept' i]",
+        "input[type=submit][value*='Agree' i]",
+        "input[type=submit][value*='Continue' i]",
+        "a:has-text('Accept')",
+        "a:has-text('I Agree')",
+    )
+    for selector in selectors:
+        try:
+            locator = page.locator(selector).first
+            if locator.count() > 0:
+                LOGGER.info("DIAG interstitial: clicking %s", selector)
+                locator.click(timeout=10_000)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=20_000)
+                except Exception:
+                    pass
+                page.wait_for_timeout(1500)
+                LOGGER.info("DIAG post-interstitial: url=%s title=%r", page.url, page.title())
+                return
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.debug("DIAG interstitial selector %s failed: %s", selector, exc)
+    LOGGER.info("DIAG interstitial: no Accept/Agree/Continue button found")
 
 
 def _click_guest_login(page) -> None:
