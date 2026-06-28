@@ -87,7 +87,7 @@ echo
 echo "--- status ---"
 launchctl print "gui/$UID/$LABEL" 2>&1 | grep -E "(state|program|run interval|last exit)" | head -10 || true
 echo
-echo "✓ Installed. Job runs ~every 3h (08/11/14/17/20/23 at :17)."
+echo "✓ Installed. Job runs every 2h during waking hours (08/10/12/14/16/18/20/22 at :17)."
 echo "  Log:        ~/Library/Logs/stubhub-repricer.log"
 echo "  Test email: $REPO_DIR/.venv/bin/python stubhub_repricer.py --test"
 echo "  Run once:   $SCRIPT_DIR/stubhub_repricer_run.sh"

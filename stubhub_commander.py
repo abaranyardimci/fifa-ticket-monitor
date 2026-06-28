@@ -208,11 +208,28 @@ class _Busy(Exception):
     pass
 
 
+def _archive(imap: imaplib.IMAP4_SSL, num) -> None:
+    """Mark processed and remove from INBOX (Gmail keeps it in All Mail) so it's
+    never reprocessed. We must NOT rely on the \\Seen flag for that: Gmail
+    delivers self-sent command mail already marked read, so polling can't filter
+    on UNSEEN. Archiving is the durable 'done' signal instead."""
+    try:
+        imap.store(num, "+FLAGS", "\\Seen")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        imap.store(num, "-X-GM-LABELS", "\\Inbox")  # Gmail: archive out of INBOX
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _poll_once(imap: imaplib.IMAP4_SSL) -> None:
     imap.select("INBOX")
     senders = _allowed_senders()
-    # Only fetch unread messages whose subject carries one of our verbs.
-    typ, data = imap.search(None, "UNSEEN", "OR", "OR",
+    # Search by command verb regardless of read/unread — Gmail marks self-sent
+    # mail as already read, so an UNSEEN filter would miss your own commands.
+    # Processed messages are archived out of INBOX, so each is handled once.
+    typ, data = imap.search(None, "OR", "OR",
                             "SUBJECT", "APPROVE", "SUBJECT", "DECLINE", "SUBJECT", "MODIFY")
     if typ != "OK":
         return
@@ -224,19 +241,19 @@ def _poll_once(imap: imaplib.IMAP4_SSL) -> None:
         subject = _decode(msg.get("Subject", ""))
         m = _SUBJECT_RE.match(subject)
         if not m:
-            continue                        # not one of our commands; leave it alone
+            continue                        # not one of our commands; leave it in place
         _, from_addr = email.utils.parseaddr(_decode(msg.get("From", "")))
         if from_addr.lower() not in senders:
             LOGGER.warning("ignoring command from unauthorised sender %r", from_addr)
-            imap.store(num, "+FLAGS", "\\Seen")
+            _archive(imap, num)
             continue
         action, key, nonce, price_raw = m.group(1), m.group(2), m.group(3), m.group(4)
         try:
             _handle(action, key, nonce, price_raw)
         except _Busy:
             LOGGER.info("engine busy; will retry %s %s next poll", action, key)
-            continue                        # leave UNSEEN so we pick it up again
-        imap.store(num, "+FLAGS", "\\Seen")
+            continue                        # leave in INBOX so we pick it up again
+        _archive(imap, num)
 
 
 def main() -> int:
