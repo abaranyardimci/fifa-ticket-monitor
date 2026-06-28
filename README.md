@@ -410,3 +410,131 @@ We tried. The eCaseView guest-login flow uses **reCAPTCHA v3** which:
 
 The only combination that scores high enough is: system Chrome + visible
 window + residential IP. Running locally via launchd satisfies all three.
+
+## StubHub repricer
+
+Keeps your StubHub ticket listings priced as the **lowest comparable in your
+section** so StubHub promotes them — while **never netting below your cost** and
+maximising profit. Built for 3 FIFA WC 2026 listings but config-driven for any.
+
+**Two halves, one module (`stubhub_repricer.py`):**
+
+- **Read / recommend (scheduled, anonymous — no login):** opens each event page
+  in offscreen system Chrome, clicks **"Show more"** until every listing is
+  loaded, parses the rendered listing rows (section / row / seat / qty / all-in
+  price), finds the cheapest comparable in your section, computes a recommended
+  price, and **emails you a recommendation** (only when it changes). This half
+  never touches money.
+- **Apply (on-demand, authenticated):** `--apply <key>` reuses a logged-in
+  Chrome profile to set an *approved* price, after re-checking the live market
+  and StubHub's own displayed payout. This is the only path that changes a price.
+
+This is **notify-and-approve** by design: the schedule proposes, you approve.
+
+### How StubHub's data actually works (discovered against the live site)
+
+- StubHub runs on **viagogo**; listings are **server-rendered into the DOM**
+  (`#listings-container`), not a clean JSON API — so we parse the DOM.
+- Only ~10 of N listings load initially (sorted "best deal"), so we click
+  **"Show more"** until all are loaded, then filter to your section.
+- Displayed prices are **all-in** ("incl. fees" — list price + buyer fee). We
+  compare **all-in to all-in** (the unit buyers sort on) and convert to a seller
+  **list price** (what you type) using `buyer_fee_pct` only for the floor check
+  and the price to type. Real payout is read live at apply-time as the backstop.
+- You are usually the **only seller in your exact row**, so the useful
+  comparison is **section-level** (`compare_mode: "section"`); the email shows
+  the section price ladder with each row/seat so you can judge a seat-quality
+  premium. Use `compare_mode: "row"` (+ `row_tolerance`) for strict same-row.
+
+### Pricing logic (all comparison in all-in space)
+
+- `floor_list = ceil(unit_cost / (1 − fee_rate))` — never net below this.
+  (Argentina ≈ $2,778 · M89 ≈ $1,059/ea · M103 ≈ $1,324/ea at 15%.)
+- `competitorMin` = cheapest comparable in your section (excluding your own,
+  matched by section + row + `our_seat`).
+- `target = competitorMin × (1 − undercut_pct)`, strictly below (no ties).
+- **PROMOTE / RAISE** when above floor (raises if you're under-priced).
+- **HOLD_AT_FLOOR** when the cheapest comp is below your floor.
+- **CAPPED** when a single-run drop would exceed `max_drop_pct`.
+- **NO_COMP / NO_SELLER** → hold (NO_SELLER hints room to raise).
+
+The **authoritative floor check** is at apply-time: it reads StubHub's own
+payout and **refuses to set a price whose payout < your cost** (the real
+commission is dynamic, not exactly 15%).
+
+### Files
+
+- `stubhub_repricer.py` — the repricer (single file).
+- `stubhub_listings.json` — per-listing config (**no secrets**; fill placeholders).
+- `scripts/stubhub_repricer_run.sh` — launchd wrapper (pulls, runs, commits state).
+- `scripts/com.user.stubhub-repricer.plist.tpl` — launchd plist template.
+- `scripts/install_stubhub_repricer.sh` / `uninstall_stubhub_repricer.sh`.
+- `state/stubhub_prices.json` — per-listing current/recommended/comp-min/history.
+- `state/stubhub_repricer_failures.json` — consecutive-failure counter.
+
+### Setup
+
+```bash
+cd ~/Documents/Claude/FIFABILET     # venv + system Chrome as above
+
+# 1. Fill stubhub_listings.json: event_url, section, rows, our_seat, quantity,
+#    unit_cost. (compare_mode defaults to "section".)
+
+# 2. Sanity-check what the scraper sees for each listing (no email, no changes):
+.venv/bin/python stubhub_repricer.py --check argentina_capeverde
+#    Confirm the "<-- looks like YOURS" row matches your real seat (via --probe).
+
+# 3. (Optional) Log in once so --apply can edit prices for you later:
+.venv/bin/python stubhub_repricer.py --login
+
+# 4. Install the scheduled recommend job (prompts for Gmail creds):
+scripts/install_stubhub_repricer.sh
+```
+
+The job fires ~every 3 hours during waking hours (08/11/14/17/20/23 at :17).
+If you'd rather not automate the edit, you can ignore `--login`/`--apply`
+entirely and just change prices in the StubHub app using the emailed numbers.
+
+### Commands
+
+```bash
+.venv/bin/python stubhub_repricer.py --selftest        # pricing asserts (no network)
+.venv/bin/python stubhub_repricer.py --test            # send a test email
+.venv/bin/python stubhub_repricer.py --list-config     # print parsed config
+.venv/bin/python stubhub_repricer.py --list-state      # print stored state
+.venv/bin/python stubhub_repricer.py --probe  KEY      # scrape + dump every parsed listing in your section
+.venv/bin/python stubhub_repricer.py --check  KEY      # scrape + print recommendation + ladder (no email)
+.venv/bin/python stubhub_repricer.py --apply  KEY --dry-run   # preview the edit, no confirm
+.venv/bin/python stubhub_repricer.py --apply  KEY            # set the approved price
+scripts/stubhub_repricer_run.sh                        # one scheduled-style run (writes to log)
+```
+
+### Buyer-fee calibration (improves the "list price to type")
+
+Displayed prices are all-in. To turn a target all-in price into the **list price
+you type**, the engine divides by `1 + buyer_fee_pct` (default 0.27). To make
+this exact, set `buyer_fee_pct` per listing: take any one of your listings, note
+its **all-in** price (from `--check`) and the **list price** you actually entered
+on StubHub, then `buyer_fee_pct = all_in / list − 1`. Even if it's off, the
+apply-time payout check still refuses anything that nets below your cost.
+
+### Safety guards
+
+- **Empty/blocked scrape with prior data → treated as a failure** (no price
+  drop recommended); "repricer broken" email after 3 consecutive failures.
+- **Self-exclusion** by section + row + `our_seat` (or `our_listing_id` if set)
+  so the engine never undercuts your own listing.
+- **Apply re-validates, never replays** a stale emailed number, and aborts if
+  the price is no longer lowest or would pay back less than your cost.
+- **Only the price field is ever edited** (StubHub needs delist+relist for
+  seat/qty changes — we never do that).
+- Dedicated Chrome profile (`~/.config/stubhub-repricer/chrome-profile`) so we
+  never fight a lock on your personal Chrome; a live lock fails loudly.
+
+### ⚠️ FIFA cancellation risk (not a code issue — know this)
+
+For WC 2026, FIFA tickets transfer via the FIFA account portal, and FIFA's terms
+state they are **non-transferable outside FIFA's own resale marketplace** — FIFA
+can cancel tickets resold via third parties (StubHub) without refund. This tool
+only optimises price; the underlying cancellation risk is independent of any
+pricing logic and is yours to weigh.

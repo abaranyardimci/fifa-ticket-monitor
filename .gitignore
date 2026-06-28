@@ -10,3 +10,7 @@ venv/
 .idea/
 .vscode/
 *.log
+
+# StubHub repricer: raw probe dumps + lockfile (not state worth committing)
+state/probe_*.json
+state/.stubhub_repricer.lock
