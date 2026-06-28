@@ -1169,6 +1169,96 @@ def _apply_locked(cfg: ListingConfig, key: str, dry_run: bool,
             ctx.close()
 
 
+# JS that tags OUR listing's own card + Adjust-price button. It walks up from the
+# listingId link to the SMALLEST ancestor that contains this listing's link and an
+# Adjust button but NO other listing's link — so we can never grab a different
+# listing's controls. Returns {ok:true} (and tags data-bot-card / data-bot-adjust)
+# or {ok:false, reason, status} when this listing has no editable price button.
+_TAG_OUR_LISTING_JS = """(id) => {
+  const links = [...document.querySelectorAll("a[href*='listingId=']")];
+  const lnk = links.find(a => a.href.includes('listingId=' + id));
+  if (!lnk) return {ok:false, reason:'listing link not on page'};
+  let el = lnk, depth = 0, card = null, btn = null;
+  while (el && depth < 15) {
+    const others = [...el.querySelectorAll("a[href*='listingId=']")]
+        .filter(a => !a.href.includes('listingId=' + id));
+    const adj = [...el.querySelectorAll('button')]
+        .filter(b => /adjust price/i.test(b.textContent || ''));
+    if (others.length === 0 && adj.length >= 1) { card = el; btn = adj[0]; break; }
+    el = el.parentElement; depth++;
+  }
+  document.querySelectorAll('[data-bot-card]').forEach(e => e.removeAttribute('data-bot-card'));
+  document.querySelectorAll('[data-bot-adjust]').forEach(e => e.removeAttribute('data-bot-adjust'));
+  if (!card) {
+    const s = (lnk.closest('div')?.textContent || '').replace(/\\s+/g, ' ').slice(0, 80);
+    return {ok:false, reason:"no Adjust-price button in this listing's own card", status:s};
+  }
+  card.setAttribute('data-bot-card', '1');
+  btn.setAttribute('data-bot-adjust', '1');
+  return {ok:true};
+}"""
+
+
+def _dismiss_editor(page) -> None:
+    for t in ("Cancel", "Close", "Dismiss"):
+        try:
+            page.locator(f"button:has-text('{t}')").first.click(timeout=1500)
+            return
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        page.keyboard.press("Escape")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _confirm_if_prompted(page) -> None:
+    """If StubHub shows an 'are you sure?' confirmation (e.g. on a price drop /
+    below-market), accept it. Best-effort: a missing dialog is fine because the
+    apply independently re-reads and verifies the price afterward."""
+    try:
+        dialog = page.locator("[role=dialog], [aria-modal='true']").first
+        if dialog.count() == 0:
+            return
+    except Exception:  # noqa: BLE001
+        return
+    for t in ("Confirm", "Yes, lower", "Yes", "Continue", "Update", "Lower price", "Confirm price"):
+        try:
+            btn = dialog.locator(f"button:has-text('{t}')").first
+            if btn.count() > 0:
+                btn.click(timeout=2000)
+                page.wait_for_timeout(1500)
+                LOGGER.info("apply: accepted confirmation dialog via %r", t)
+                return
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _verify_listing_price(page, listing_id: str, target: int) -> bool:
+    """Reload, reopen OUR listing's editor, and confirm the field now reads target.
+    This is the authoritative success check — we never report success without it."""
+    try:
+        page.reload(wait_until="domcontentloaded", timeout=60_000)
+        page.wait_for_selector("button:has-text('Adjust price')", timeout=30_000)
+        page.wait_for_timeout(1500)
+        res = page.evaluate(_TAG_OUR_LISTING_JS, listing_id)
+        if not res or not res.get("ok"):
+            LOGGER.error("apply: verify could not re-locate listing %s (%s).",
+                         listing_id, (res or {}).get("reason", "?"))
+            return False
+        page.locator("button[data-bot-adjust='1']").first.click(timeout=10_000)
+        page.wait_for_timeout(2500)
+        val = _money(page.locator("input[type='number']").first.input_value(timeout=6000))
+        ok = val is not None and abs(val - target) < 1
+        LOGGER.info("apply: post-change verify for %s -> field reads $%s (target $%s) => %s",
+                    listing_id, _fmt(val), f"{target:,}", "OK" if ok else "MISMATCH")
+        _dismiss_editor(page)
+        return ok
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.error("apply: verification step failed: %s", exc)
+        return False
+
+
 def _set_listing_price(page, cfg: ListingConfig, target_list: int, *, dry_run: bool):
     """Drive the real StubHub 'Adjust price' inline editor for our listing.
 
@@ -1179,32 +1269,21 @@ def _set_listing_price(page, cfg: ListingConfig, target_list: int, *, dry_run: b
     read the payout, then Save (or Cancel on --dry-run). Only the price field is
     ever touched. Returns (verified_list, payout_total) or None.
     """
-    # 1. Find OUR listing's card + its "Adjust price" button (scope by listingId
-    #    so we never touch or read another listing's data).
-    adjust = None
-    card = None
-    if cfg.our_listing_id:
-        link = page.locator(f"a[href*='listingId={cfg.our_listing_id}']").first
-        if link.count() > 0:
-            try:
-                link.scroll_into_view_if_needed(timeout=4000)
-            except Exception:  # noqa: BLE001
-                pass
-            # Nearest ancestor div that holds this listing's Adjust button = its card.
-            card = link.locator(
-                'xpath=ancestor::div[.//button[contains(normalize-space(.),"Adjust price")]][1]')
-            if card.count() > 0:
-                cand = card.locator("button:has-text('Adjust price')").first
-                if cand.count() > 0:
-                    adjust = cand
-    if adjust is None:
-        allbtns = page.locator("button:has-text('Adjust price')")
-        if allbtns.count() == 1:  # unambiguous fallback only
-            adjust = allbtns.first
-    if adjust is None:
-        LOGGER.error("apply: couldn't find the 'Adjust price' button for listing %s "
-                     "(section %s).", cfg.our_listing_id, cfg.section)
+    # 1. STRICTLY scope to OUR listing's own card + Adjust-price button. We tag
+    #    them via the smallest ancestor that contains THIS listing's link and an
+    #    Adjust button but NO other listing's link. If our listing has no own
+    #    Adjust button (e.g. it's 'action required'/sold/pending and not editable),
+    #    we ABORT — we must NEVER fall through to a different listing's button.
+    if not cfg.our_listing_id:
+        LOGGER.error("apply: our_listing_id is required for safe per-listing scoping; refusing.")
         return None
+    res = page.evaluate(_TAG_OUR_LISTING_JS, cfg.our_listing_id)
+    if not res or not res.get("ok"):
+        LOGGER.error("apply: no editable 'Adjust price' button for listing %s "
+                     "(reason: %s; status: %s). Refusing — will NOT touch any other listing.",
+                     cfg.our_listing_id, (res or {}).get("reason", "?"), (res or {}).get("status", "?"))
+        return None
+    adjust = page.locator("button[data-bot-adjust='1']").first
     try:
         adjust.scroll_into_view_if_needed(timeout=4000)
         adjust.click(timeout=10_000)
@@ -1213,46 +1292,52 @@ def _set_listing_price(page, cfg: ListingConfig, target_list: int, *, dry_run: b
         LOGGER.error("apply: couldn't open the price editor: %s", exc)
         return None
 
-    # 2. The price field is the editor's number input.
+    # 2. The editor's number input is page-level (only OUR editor is open now).
     field = page.locator("input[type='number']").first
     if field.count() == 0:
         LOGGER.error("apply: price field not found after opening editor.")
         return None
     try:
-        before = _money(field.input_value(timeout=4000))
-        LOGGER.info("apply: editor open; current list price reads $%s", _fmt(before))
+        before = _money(field.input_value(timeout=5000))
+        LOGGER.info("apply: editor open for listing %s; current list price reads $%s",
+                    cfg.our_listing_id, _fmt(before))
     except Exception:  # noqa: BLE001
-        pass
+        before = None
     try:
         field.fill(str(int(target_list)), timeout=8000)
-        page.wait_for_timeout(1500)
+        page.wait_for_timeout(1200)
     except Exception as exc:  # noqa: BLE001
         LOGGER.error("apply: couldn't fill price: %s", exc)
         return None
 
-    # 3. Dry-run: read the card's current payout for context, then Cancel.
-    #    (The 'You'll get' figure is the CURRENT payout — it only reflects the new
-    #    price after Save — so it's context here, not the floor gate.)
+    # 3. Dry-run: read payout for context, then dismiss WITHOUT committing.
     if dry_run:
-        payout = _read_payout_from_card(card)
-        try:
-            page.locator("button:has-text('Cancel')").first.click(timeout=5000)
-        except Exception:  # noqa: BLE001
-            pass
+        payout = _read_payout_from_card(page.locator("[data-bot-card='1']").first)
+        _dismiss_editor(page)
         return (None, payout)
 
-    # 4. Save, then re-read the card's now-updated 'You'll get' payout.
+    # 4. Save. A confirmation dialog appears for some changes (notably price
+    #    drops / below-market) and must be accepted; raises commit directly.
     save = page.locator("button:has-text('Save')").first
     if save.count() == 0:
         LOGGER.error("apply: Save button not found; not setting price.")
         return None
     try:
         save.click(timeout=10_000)
-        page.wait_for_timeout(3500)
+        page.wait_for_timeout(3000)
     except Exception as exc:  # noqa: BLE001
         LOGGER.error("apply: Save click failed: %s", exc)
         return None
-    return (int(target_list), _read_payout_from_card(card))
+    _confirm_if_prompted(page)
+    page.wait_for_timeout(2000)
+
+    # 5. VERIFY the change actually took — reload, reopen OUR editor, re-read the
+    #    value. Only report success if it equals the target (no false success).
+    if not _verify_listing_price(page, cfg.our_listing_id, int(target_list)):
+        LOGGER.error("apply: could NOT verify the new price for listing %s — treating as FAILED "
+                     "(nothing reliably changed).", cfg.our_listing_id)
+        return None
+    return (int(target_list), _read_payout_from_card(page.locator("[data-bot-card='1']").first))
 
 
 def _read_payout_from_card(card) -> Optional[float]:
