@@ -42,12 +42,16 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
+import hmac
 import json
 import logging
 import math
 import os
 import re
+import secrets
 import sys
+import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -92,6 +96,34 @@ ST_NO_SELLER = "NO_SELLER"       # we're the only listing in the section -> hold
 ST_BLOCKED = "BLOCKED"           # scrape returned nothing -> do nothing
 ST_PAST = "SKIPPED_PAST"         # event already happened
 
+# Minimum fraction of the event's total listings ("Showing N of M") that must
+# render before we trust the scrape. A truncated/partially-blocked page that
+# still returns some rows is the most dangerous failure mode (a confident, wrong
+# competitorMin), so we treat a thin render as a block, not a result.
+MIN_RENDER_FRACTION = 0.6
+MIN_M_FOR_RENDER_CHECK = 5
+# A single-run comp-min swing larger than this (vs the prior run) is flagged
+# low-confidence: we record the new level but neither email nor apply off it
+# until a subsequent run confirms it (guards against noisy/partial scrapes).
+COMP_JUMP_BAND = 0.60
+
+# Secret used to HMAC the per-recommendation approve nonce so the value stored in
+# state/ (which may be committed to a public repo) is NOT itself a usable token.
+# The raw nonce lives only in the recommendation email (your private mailbox).
+def _cmd_hmac_secret() -> str:
+    return (os.environ.get("STUBHUB_CMD_HMAC_SECRET", "").strip()
+            or os.environ.get("STUBHUB_APPROVE_TOKEN", "").strip())
+
+
+def hmac_nonce(raw: str) -> str:
+    secret = _cmd_hmac_secret()
+    if not secret:
+        # No secret configured -> fall back to a plain digest. The command
+        # channel won't be usable until a secret is set (commander refuses to
+        # run without one), so this only affects emails sent before setup.
+        return hashlib.sha256(raw.encode()).hexdigest()
+    return hmac.new(secret.encode(), raw.encode(), hashlib.sha256).hexdigest()
+
 
 # ---------- config ----------
 
@@ -118,11 +150,17 @@ class ListingConfig:
     currency: str
     min_change_abs: float
     min_change_pct: float
+    min_profit: float = 0.0      # required net margin per ticket on top of cost
 
     @property
     def floor_list(self) -> int:
-        """Lowest seller list price whose payout still covers cost."""
-        return math.ceil(self.unit_cost / (1.0 - self.fee_rate))
+        """Lowest seller list price whose payout still covers cost + min_profit.
+
+        Default min_profit=0 keeps the floor at breakeven (legacy behaviour).
+        Set min_profit (per ticket) in config to keep a buffer against the
+        dynamic real commission, which the apply path acknowledges is not
+        exactly fee_rate."""
+        return math.ceil((self.unit_cost + self.min_profit) / (1.0 - self.fee_rate))
 
     # Back-compat alias used by --selftest.
     @property
@@ -192,6 +230,7 @@ def _coerce_listing_config(key: str, raw: dict) -> ListingConfig:
         currency=str(raw.get("currency", "USD")),
         min_change_abs=float(raw.get("min_change_abs", 10.0)),
         min_change_pct=float(raw.get("min_change_pct", 0.005)),
+        min_profit=float(raw.get("min_profit", 0.0)),
     )
 
 
@@ -250,11 +289,11 @@ _SHOW_MORE_JS = """() => {
 }"""
 
 
-def _parse_listing_text(text: str) -> Optional[Listing]:
+def _parse_listing_text(text: str, listing_id: str = "") -> Optional[Listing]:
     t = " ".join(text.split())
     if "ticket" not in t:
         return None
-    m = re.search(r'Section\s+([A-Za-z0-9 ]+?)(?:\s+Row|\s+Seat|\s+\d+\s+ticket|\s+Eye|\s+No image|$)', t)
+    m = re.search(r'Section\s+([A-Za-z0-9 ]+?)(?:\s+Row|\s+Seat|\s+\d+\s+ticket|\s+Eye|\s+No image|\s+\$|$)', t)
     section = m.group(1).strip() if m else ""
     m = re.search(r'\bRow\s+([A-Za-z0-9]+)', t)
     row = m.group(1) if m else ""
@@ -271,7 +310,7 @@ def _parse_listing_text(text: str) -> Optional[Listing]:
     badges = " ".join(b for b in ("Best price", "Best deal", "Fan favorite", "Last ticket",
                                   "Only 1 left", "Only 2 left") if b in t)
     return Listing(section=section, row=row, seat=seat, quantity=qty, price=price,
-                   badges=badges, text=t[:160])
+                   listing_id=listing_id, badges=badges, text=t[:160])
 
 
 def _scrape_listings(cfg: ListingConfig):
@@ -287,7 +326,7 @@ def _scrape_listings(cfg: ListingConfig):
 
     from bs4 import BeautifulSoup
 
-    meta = {"showing": "", "title": "", "clicks": 0}
+    meta = {"showing": "", "title": "", "clicks": 0, "n": None, "m": None}
     with sync_playwright() as pw:
         browser = pw.chromium.launch(channel="chrome", headless=False, args=_STEALTH_ARGS)
         try:
@@ -336,12 +375,24 @@ def _scrape_listings(cfg: ListingConfig):
         finally:
             browser.close()
 
+    mn = re.search(r'Showing\s+(\d+)\s+of\s+(\d+)', meta["showing"] or "")
+    if mn:
+        meta["n"], meta["m"] = int(mn.group(1)), int(mn.group(2))
+
     soup = BeautifulSoup(html, "lxml")
     cont = soup.find(id="listings-container")
     listings: List[Listing] = []
     if cont is not None:
         for k in cont.find_all(recursive=False):
-            parsed = _parse_listing_text(k.get_text(" ", strip=True))
+            lid = ""
+            try:
+                a = k.find("a", href=re.compile(r"listingId=", re.I))
+                if a and a.get("href"):
+                    mid = re.search(r"listingId=(\d+)", a["href"], re.I)
+                    lid = mid.group(1) if mid else ""
+            except Exception:  # noqa: BLE001
+                lid = ""
+            parsed = _parse_listing_text(k.get_text(" ", strip=True), listing_id=lid)
             if parsed:
                 listings.append(parsed)
     LOGGER.info("%s: %s | clicks=%d parsed=%d listings",
@@ -390,7 +441,12 @@ def filter_comparables(cfg: ListingConfig, listings: List[Listing]) -> List[List
             continue
         if _norm(l.section) != want:
             continue
-        if l.quantity and l.quantity < cfg.quantity:
+        if cfg.quantity > 1:
+            # Selling as a set: a comp with unknown (0) or smaller qty can't serve
+            # the same pair-buyer, so it must not anchor our price.
+            if not l.quantity or l.quantity < cfg.quantity:
+                continue
+        elif l.quantity and l.quantity < cfg.quantity:
             continue
         out.append(l)
     return out
@@ -416,6 +472,9 @@ class Recommendation:
     cheapest_row: str = ""
     detail: str = ""
     ladder: List[Listing] = field(default_factory=list)
+    low_confidence: bool = False        # scrape/comp instability -> don't auto-act
+    confidence_note: str = ""
+    nonce: str = ""                     # per-recommendation approve code (raw; email only)
 
     @property
     def is_change(self) -> bool:
@@ -538,6 +597,18 @@ def evaluate_listing(cfg: ListingConfig, state_entry: dict) -> tuple[Recommendat
                               detail="Parsed 0 listings (page empty or blocked)."), \
                "empty scrape (page empty or blocked)"
 
+    # Partial-render guard: if the page advertised "Showing N of M" and we parsed
+    # materially fewer than M rows, the page didn't fully stream (slow load or a
+    # partial anti-bot block). A thin render yields a confident-but-wrong
+    # competitorMin, so treat it as a block (fails, preserves state) rather than
+    # repricing off it.
+    m_total = meta.get("m")
+    if m_total and m_total >= MIN_M_FOR_RENDER_CHECK and len(listings) < m_total * MIN_RENDER_FRACTION:
+        return Recommendation(cfg.key, ST_BLOCKED, None, None, None, cfg.floor_allin, None, 0,
+                              detail=f"Partial render: parsed {len(listings)} of {m_total} "
+                                     f"listings (<{MIN_RENDER_FRACTION:.0%}) — treating as a block."), \
+               f"partial render ({len(listings)}/{m_total})"
+
     own = next((l for l in listings if is_own_listing(cfg, l)), None)
     current = float(own.price) if own else state_entry.get("current_price")
     current_f = float(current) if current is not None else None
@@ -549,6 +620,19 @@ def evaluate_listing(cfg: ListingConfig, state_entry: dict) -> tuple[Recommendat
     rec.ladder = sorted(section_comps, key=lambda x: x.price)[:8]
     if rec.recommended_price is not None:
         rec.list_to_type = int(round(allin_to_list(rec.recommended_price, cfg)))
+
+    # Comp-stability guard: a single noisy/partial scrape can move comp_min (the
+    # pricing anchor) by thousands. If it swung more than COMP_JUMP_BAND vs the
+    # prior run, flag low-confidence: the scheduled run records the new level but
+    # won't email an actionable change, and apply refuses, until a later run
+    # confirms the move.
+    prev_comp = state_entry.get("last_competitor_min")
+    if (had_data and prev_comp and rec.competitor_min is not None
+            and abs(rec.competitor_min - float(prev_comp)) / float(prev_comp) > COMP_JUMP_BAND):
+        rec.low_confidence = True
+        rec.confidence_note = (f"comp_min moved ${float(prev_comp):,.0f} -> "
+                               f"${rec.competitor_min:,.0f} (>{COMP_JUMP_BAND:.0%}) in one run; "
+                               "holding until a later run confirms.")
     return rec, None
 
 
@@ -597,11 +681,23 @@ def _run_once() -> RunResult:
         if rec.current_price is not None:
             entry["current_price"] = rec.current_price
 
-        if _is_emailworthy(cfg, rec, entry):
+        if rec.low_confidence:
+            entry["last_status"] = f"{rec.status}/LOW_CONFIDENCE"
+            LOGGER.warning("%s: low-confidence run, not emailing: %s", key, rec.confidence_note)
+        elif _is_emailworthy(cfg, rec, entry):
+            # Bind this recommendation to a single-use nonce. Store only its HMAC
+            # in state (state may be committed to a public repo); the raw nonce
+            # goes only into the email. The commander verifies the HMAC + sender.
+            raw_nonce = secrets.token_urlsafe(9)
+            rec.nonce = raw_nonce
             changed.append(rec)
             entry["last_emailed_price"] = rec.recommended_price
             entry["last_emailed_at"] = now_iso
             entry["last_emailed_status"] = rec.status
+            entry["pending_nonce_hmac"] = hmac_nonce(raw_nonce)
+            entry["pending_allin"] = rec.recommended_price
+            entry["pending_list"] = rec.list_to_type
+            entry["pending_at"] = now_iso
 
         hist = entry.setdefault("history", [])
         hist.append({"t": now_iso, "comp_min": rec.competitor_min,
@@ -646,15 +742,34 @@ def _apply_cmd(key: str) -> str:
     return f".venv/bin/python stubhub_repricer.py --apply {key}"
 
 
-def _approve_url(key: str) -> Optional[str]:
-    """One-click approve link, served by the local approver daemon. Present only
-    when STUBHUB_APPROVE_PORT + STUBHUB_APPROVE_TOKEN are configured (see
-    scripts/install_stubhub_approver.sh)."""
-    port = os.environ.get("STUBHUB_APPROVE_PORT", "").strip()
-    token = os.environ.get("STUBHUB_APPROVE_TOKEN", "").strip()
-    if port and token:
-        return f"http://127.0.0.1:{port}/approve?key={key}&token={token}"
-    return None
+def _command_mailbox() -> str:
+    """The Gmail address the commander polls (where reply-commands are sent)."""
+    return os.environ.get("GMAIL_USER", "").strip()
+
+
+def _mailto(to: str, subject: str, body: str) -> str:
+    q = urllib.parse.urlencode({"subject": subject, "body": body}, quote_via=urllib.parse.quote)
+    return f"mailto:{to}?{q}"
+
+
+def _command_links(key: str, nonce: str, allin: Optional[int], list_to_type: Optional[int]) -> Optional[dict]:
+    """Pre-composed reply-email links for Approve / Decline / Modify. Tapping one
+    on any device opens a pre-filled email to the command mailbox; sending it
+    triggers the action (verified by sender + single-use nonce on the Mac).
+    Returns None if the mailbox or nonce isn't available."""
+    to = _command_mailbox()
+    if not to or not nonce or allin is None:
+        return None
+    a = f"${allin:,} all-in" + (f" (list ${list_to_type:,})" if list_to_type else "")
+    return {
+        "approve": _mailto(to, f"APPROVE {key} {nonce}",
+                           f"Approve {key} at {a}. Just send this email — do not edit the subject."),
+        "decline": _mailto(to, f"DECLINE {key} {nonce}",
+                           f"Decline the {key} recommendation. Just send this email."),
+        "modify": _mailto(to, f"MODIFY {key} {nonce} {allin}",
+                          "To set a different price, change the LAST number in the subject line "
+                          "to your desired ALL-IN price (whole dollars), then send."),
+    }
 
 
 def _ladder_text(rec: Recommendation, cfg: ListingConfig) -> str:
@@ -682,7 +797,7 @@ def _msg_recommendations(config: dict[str, ListingConfig], recs: List[Recommenda
         new = f"${r.recommended_price:,}" if r.recommended_price is not None else "—"
         lst = f"${r.list_to_type:,}" if r.list_to_type is not None else "—"
         pay = f"${r.payout:,.0f}" if r.payout is not None else "—"
-        url = _approve_url(r.key)
+        links = _command_links(r.key, r.nonce, r.recommended_price, r.list_to_type)
         text += [
             f"### {cfg.label}  [{verb}]",
             f"  Your seat: section {cfg.section}, row {'/'.join(cfg.rows) or '?'}"
@@ -692,15 +807,29 @@ def _msg_recommendations(config: dict[str, ListingConfig], recs: List[Recommenda
             f"  {r.detail}",
             "  section price ladder (cheapest first):",
             _ladder_text(r, cfg),
-            (f"  APPROVE (click to apply): {url}" if url
-             else f"  approve: {_apply_cmd(r.key)}   (add --dry-run to preview)"),
-            "",
         ]
-        if url:
+        if links:
+            text += [
+                f"  APPROVE: reply with subject  APPROVE {r.key} {r.nonce}",
+                f"  DECLINE: reply with subject  DECLINE {r.key} {r.nonce}",
+                f"  MODIFY : reply with subject  MODIFY {r.key} {r.nonce} <your all-in $>",
+                f"  (or on this Mac: {_apply_cmd(r.key)})",
+                "",
+            ]
+        else:
+            text += [f"  approve on this Mac: {_apply_cmd(r.key)}   (add --dry-run to preview)", ""]
+
+        if links:
+            def _btn(href, bg, label):
+                return (f"<a href='{_esc(href)}' style='display:inline-block;background:{bg};color:#fff;"
+                        f"text-decoration:none;padding:7px 14px;border-radius:6px;font-weight:600;"
+                        f"margin:2px 4px 2px 0'>{label}</a>")
             approve_html = (
-                f"<a href='{_esc(url)}' style='display:inline-block;background:#1a7f37;color:#fff;"
-                f"text-decoration:none;padding:7px 14px;border-radius:6px;font-weight:600'>"
-                f"✅ Approve &amp; apply</a>")
+                _btn(links["approve"], "#1a7f37", "✅ Approve")
+                + _btn(links["modify"], "#0969da", "✏️ Modify")
+                + _btn(links["decline"], "#6e7781", "✖︎ Decline")
+                + "<br><span style='font-size:11px;color:#888'>Opens a pre-filled reply — just "
+                  "send it. Modify: edit the last number in the subject.</span>")
         else:
             approve_html = f"<code>{_esc(_apply_cmd(r.key))}</code>"
         html_rows.append(
@@ -719,7 +848,8 @@ def _msg_recommendations(config: dict[str, ListingConfig], recs: List[Recommenda
             "</tr>"
         )
 
-    text += ["The apply step re-checks the live market and StubHub's own payout before setting any price."]
+    text += ["Approve re-checks the live market and StubHub's own payout, refuses to net below your "
+             "cost, and refuses if the price moved materially since this email (it re-sends a fresh one)."]
     text_body = "\n".join(text)
     html_body = (
         "<html><body style=\"font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#111;max-width:1000px\">"
@@ -901,7 +1031,8 @@ def _cmd_login() -> int:
     return 0
 
 
-def _cmd_apply(key: str, dry_run: bool) -> int:
+def _cmd_apply(key: str, dry_run: bool, approved_allin: Optional[int] = None,
+               check_drift: bool = False) -> int:
     try:
         config = load_config()
     except ConfigError as exc:
@@ -920,30 +1051,59 @@ def _cmd_apply(key: str, dry_run: bool) -> int:
         LOGGER.error("another repricer run/apply is in progress; try again shortly.")
         return 1
     try:
-        return _apply_locked(cfg, key, dry_run)
+        return _apply_locked(cfg, key, dry_run, approved_allin, check_drift)
     finally:
         lock.close()
 
 
-def _apply_locked(cfg: ListingConfig, key: str, dry_run: bool) -> int:
+def _apply_locked(cfg: ListingConfig, key: str, dry_run: bool,
+                  approved_allin: Optional[int] = None, check_drift: bool = False) -> int:
     state = _load_prices()
     entry = state.get(key, {})
     rec, err = evaluate_listing(cfg, entry)
     if err or rec.status == ST_BLOCKED:
         LOGGER.error("%s: aborting apply — live data unavailable (%s).", key, err or rec.detail)
         return 1
+    if rec.low_confidence:
+        LOGGER.error("%s: aborting apply — low-confidence scrape (%s). Re-run later.",
+                     key, rec.confidence_note)
+        return 1
     if rec.recommended_price is None or rec.list_to_type is None:
         LOGGER.error("%s: no actionable price (%s).", key, rec.detail)
         return 1
-    if rec.list_to_type < cfg.floor_list:
-        LOGGER.error("%s: list-to-type $%s below floor $%s; refusing.",
-                     key, f"{rec.list_to_type:,}", f"{cfg.floor_list:,}")
+
+    # Decide the target. With --price the human pinned a specific all-in number
+    # (APPROVE re-uses the emailed number; MODIFY supplies a custom one); without
+    # it we fall back to the live recommendation (legacy CLI behaviour).
+    if approved_allin is not None:
+        if check_drift:
+            # APPROVE: refuse to silently set a price materially different from the
+            # one the human saw/approved in the email. Re-send a fresh rec instead.
+            tol = max(cfg.min_change_abs, 0.03 * approved_allin)
+            if abs(rec.recommended_price - approved_allin) > tol:
+                LOGGER.error("%s: MARKET MOVED — you approved all-in $%s but the live "
+                             "recommendation is now $%s (>$%.0f tolerance). NOT applying; a fresh "
+                             "recommendation will be emailed on the next run.",
+                             key, f"{approved_allin:,}", f"{rec.recommended_price:,}", tol)
+                return 2
+        target_allin = int(approved_allin)
+        target_list = int(round(allin_to_list(target_allin, cfg)))
+        source = "APPROVED" if check_drift else "MODIFY"
+    else:
+        target_allin = rec.recommended_price
+        target_list = rec.list_to_type
+        source = "LIVE_REC"
+
+    if target_list < cfg.floor_list:
+        LOGGER.error("%s: list-to-type $%s below floor $%s (cost $%s + margin $%s); refusing.",
+                     key, f"{target_list:,}", f"{cfg.floor_list:,}",
+                     f"{cfg.unit_cost:,.0f}", f"{cfg.min_profit:,.0f}")
         return 1
 
-    target_list = rec.list_to_type
-    LOGGER.info("%s: re-validated -> %s all-in $%s (list $%s, payout ~$%s). %s",
-                key, rec.status, f"{rec.recommended_price:,}", f"{target_list:,}",
-                f"{rec.payout:,.0f}" if rec.payout else "?", rec.detail)
+    LOGGER.info("%s: re-validated [%s] -> all-in $%s (list $%s, live rec $%s, payout ~$%s). %s",
+                key, source, f"{target_allin:,}", f"{target_list:,}",
+                f"{rec.recommended_price:,}",
+                f"{target_list * (1.0 - cfg.fee_rate):,.0f}", rec.detail)
 
     try:
         from playwright.sync_api import sync_playwright
@@ -979,17 +1139,28 @@ def _apply_locked(cfg: ListingConfig, key: str, dry_run: bool) -> int:
                             f"{card_payout:,.0f}" if card_payout else "?")
                 return 0
 
-            # Real apply done. card_payout now reflects the NEW price — verify it.
-            if card_payout is not None and card_payout < total_cost:
-                LOGGER.warning("%s: ⚠ StubHub payout now $%s < total cost $%s — real fee higher "
-                               "than expected. Consider reverting in the app.",
-                               key, f"{card_payout:,.0f}", f"{total_cost:,.0f}")
+            # Real apply done. card_payout now reflects the NEW price — verify it
+            # against the AUTHORITATIVE live payout (the real commission is dynamic
+            # and may exceed fee_rate). This is the backstop the deterministic floor
+            # can't catch.
             entry["current_list"] = target_list
             entry["last_applied_list"] = target_list
             entry["last_applied_payout"] = card_payout
             entry["last_applied_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            # Consume any pending approve nonce now that the price is set.
+            for k in ("pending_nonce_hmac", "pending_allin", "pending_list", "pending_at"):
+                entry.pop(k, None)
             state[key] = entry
             _save_prices(state)
+            if card_payout is not None and card_payout < total_cost:
+                # NOTE: no "✓ list set" phrase here on purpose, so the commander
+                # flags this result as a problem in the confirmation email.
+                LOGGER.error("%s: ⚠️ PAYOUT BELOW COST — list IS NOW SET to $%s/ticket but StubHub "
+                             "payout $%s < your cost $%s (real fee higher than configured %.0f%%). "
+                             "REVERT IN THE STUBHUB APP NOW (previous list price is logged above).",
+                             key, f"{target_list:,}", f"{card_payout:,.0f}",
+                             f"{total_cost:,.0f}", cfg.fee_rate * 100)
+                return 1
             LOGGER.info("%s: ✓ list set to $%s/ticket (StubHub payout now $%s, cost $%s).",
                         key, f"{target_list:,}",
                         f"{card_payout:,.0f}" if card_payout else "?", f"{total_cost:,.0f}")
@@ -1142,7 +1313,7 @@ def _cmd_run() -> int:
             LOGGER.warning("sent 'repricer broken' alert; resetting counter")
             failures = 0
         _save_failures(failures)
-        return 0
+        return 0 if result.success else 1
     finally:
         lock.close()
 
@@ -1159,6 +1330,63 @@ def _cmd_test() -> int:
             LOGGER.info("[%s] test sent", ch.name)
         except Exception as exc:  # noqa: BLE001
             LOGGER.error("[%s] test FAILED: %s", ch.name, exc)
+            rc = 1
+    return rc
+
+
+def _cmd_sample_email() -> int:
+    """Send a sample recommendation email (Approve/Decline/Modify buttons) built
+    from CURRENT STATE — no scrape, no price change. Stores fresh single-use
+    nonces so you can test the full remote loop from any device. Tapping DECLINE
+    is the zero-risk test (it just clears the pending recommendation)."""
+    channels = _build_channels()
+    if not channels:
+        LOGGER.error("No email channel. Set GMAIL_USER + GMAIL_APP_PASSWORD (+ EMAIL_TO).")
+        return 1
+    if not _cmd_hmac_secret():
+        LOGGER.error("STUBHUB_CMD_HMAC_SECRET (or STUBHUB_APPROVE_TOKEN) not set; "
+                     "run scripts/install_stubhub_commander.sh first.")
+        return 1
+    try:
+        config = load_config()
+    except ConfigError as exc:
+        LOGGER.error("%s", exc)
+        return 1
+    state = _load_prices()
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    recs: List[Recommendation] = []
+    for key, cfg in config.items():
+        entry = state.get(key, {})
+        allin = entry.get("recommended_price")
+        if allin is None:
+            continue
+        raw_nonce = secrets.token_urlsafe(9)
+        rec = Recommendation(
+            key, entry.get("last_status", ST_PROMOTE), entry.get("current_price"),
+            entry.get("last_competitor_min"), int(allin), cfg.floor_allin,
+            None, int(entry.get("last_listing_count", 0) or 0),
+            list_to_type=entry.get("recommended_list"),
+            detail="SAMPLE email (from stored state; no live scrape). "
+                   "Tap Decline to test the loop with zero risk.",
+            nonce=raw_nonce)
+        recs.append(rec)
+        entry["pending_nonce_hmac"] = hmac_nonce(raw_nonce)
+        entry["pending_allin"] = int(allin)
+        entry["pending_list"] = entry.get("recommended_list")
+        entry["pending_at"] = now_iso
+        state[key] = entry
+    if not recs:
+        LOGGER.error("No stored recommendations to sample. Run a scrape first.")
+        return 1
+    _save_prices(state)
+    alert = _msg_recommendations(config, recs)
+    rc = 0
+    for ch in channels:
+        try:
+            ch.send_alert(*alert)
+            LOGGER.info("[%s] sample recommendation email sent (%d listings)", ch.name, len(recs))
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.error("[%s] sample send FAILED: %s", ch.name, exc)
             rc = 1
     return rc
 
@@ -1351,6 +1579,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_selftest()
     if args.test:
         return _cmd_test()
+    if args.sample_email:
+        return _cmd_sample_email()
     if args.list_config:
         return _cmd_list_config()
     if args.list_state:
@@ -1362,13 +1592,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.login:
         return _cmd_login()
     if args.apply:
-        return _cmd_apply(args.apply, dry_run=args.dry_run)
+        return _cmd_apply(args.apply, dry_run=args.dry_run,
+                          approved_allin=args.price, check_drift=args.check_drift)
     return _cmd_run()
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="StubHub dynamic repricer")
     p.add_argument("--test", action="store_true", help="Send a test email and exit")
+    p.add_argument("--sample-email", action="store_true",
+                   help="Send a sample recommendation email with Approve/Decline/Modify buttons "
+                        "(from stored state; no scrape, no price change) to test the remote loop")
     p.add_argument("--selftest", action="store_true", help="Pricing unit asserts (no network)")
     p.add_argument("--list-config", action="store_true", help="Print parsed config")
     p.add_argument("--list-state", action="store_true", help="Print stored state")
@@ -1376,6 +1610,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--probe", metavar="KEY", help="Scrape + dump every parsed listing for one event")
     p.add_argument("--login", action="store_true", help="One-time StubHub login in the bot profile")
     p.add_argument("--apply", metavar="KEY", help="Set the approved price (money-safe)")
+    p.add_argument("--price", type=int, metavar="ALLIN",
+                   help="With --apply: the exact ALL-IN price to set (MODIFY); converted to a list "
+                        "price and still gated by the cost floor + live payout")
+    p.add_argument("--check-drift", action="store_true",
+                   help="With --apply --price: APPROVE mode — refuse if the live recommendation has "
+                        "moved materially from the approved price (re-sends a fresh recommendation)")
     p.add_argument("--dry-run", action="store_true", help="With --apply: preview without confirming")
     p.add_argument("-v", "--verbose", action="store_true", help="Verbose (DEBUG) logging")
     return p.parse_args(argv)

@@ -4,12 +4,12 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.user.stubhub-approver</string>
+    <string>com.user.stubhub-commander</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>__REPO_DIR__/scripts/stubhub_approver_run.sh</string>
+        <string>__REPO_DIR__/scripts/stubhub_commander_run.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
@@ -23,8 +23,9 @@
         <string>__REPO_DIR__</string>
     </dict>
 
-    <!-- Always-on local server so the email "Approve" links work whenever the
-         Mac is awake. Restarts if it crashes. -->
+    <!-- Always-on poller so email Approve/Decline/Modify replies are acted on
+         within ~1 poll interval whenever the Mac is awake. Restarts if it
+         crashes. Outbound IMAP only; no inbound port. -->
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
@@ -34,8 +35,8 @@
     <string>Background</string>
 
     <key>StandardOutPath</key>
-    <string>__HOME__/Library/Logs/stubhub-approver.launchd.out.log</string>
+    <string>__HOME__/Library/Logs/stubhub-commander.launchd.out.log</string>
     <key>StandardErrorPath</key>
-    <string>__HOME__/Library/Logs/stubhub-approver.launchd.err.log</string>
+    <string>__HOME__/Library/Logs/stubhub-commander.launchd.err.log</string>
 </dict>
 </plist>

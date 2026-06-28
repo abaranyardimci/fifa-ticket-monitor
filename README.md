@@ -417,19 +417,25 @@ Keeps your StubHub ticket listings priced as the **lowest comparable in your
 section** so StubHub promotes them — while **never netting below your cost** and
 maximising profit. Built for 3 FIFA WC 2026 listings but config-driven for any.
 
-**Two halves, one module (`stubhub_repricer.py`):**
+**Three parts:**
 
-- **Read / recommend (scheduled, anonymous — no login):** opens each event page
-  in offscreen system Chrome, clicks **"Show more"** until every listing is
-  loaded, parses the rendered listing rows (section / row / seat / qty / all-in
-  price), finds the cheapest comparable in your section, computes a recommended
-  price, and **emails you a recommendation** (only when it changes). This half
-  never touches money.
-- **Apply (on-demand, authenticated):** `--apply <key>` reuses a logged-in
-  Chrome profile to set an *approved* price, after re-checking the live market
-  and StubHub's own displayed payout. This is the only path that changes a price.
+- **Read / recommend (scheduled, anonymous — no login, `stubhub_repricer.py`):**
+  opens each event page in offscreen system Chrome, clicks **"Show more"** until
+  every listing is loaded, parses the rendered listing rows (section / row / seat
+  / qty / all-in price), finds the cheapest comparable in your section, computes a
+  recommended price, and **emails you a recommendation** (only when it changes).
+  Never touches money.
+- **Approve from any device (email command channel, `stubhub_commander.py`):** the
+  recommendation email carries **Approve / Decline / Modify** buttons. Tapping one
+  on your iPhone/iPad/anything opens a pre-filled reply; a daemon on the Mac polls
+  Gmail over **IMAP (outbound only — no inbound port)**, verifies it, and runs the
+  apply path. See [Remote control](#remote-control-approvedeclinemodify-from-any-device).
+- **Apply (authenticated):** `--apply <key>` reuses a logged-in Chrome profile to
+  set an *approved* price, after re-checking the live market and StubHub's own
+  displayed payout. The only path that changes a price.
 
-This is **notify-and-approve** by design: the schedule proposes, you approve.
+This is **notify-and-approve** by design: the schedule proposes, you approve from
+any device, the Mac applies.
 
 ### How StubHub's data actually works (discovered against the live site)
 
@@ -464,13 +470,24 @@ commission is dynamic, not exactly 15%).
 
 ### Files
 
-- `stubhub_repricer.py` — the repricer (single file).
+- `stubhub_repricer.py` — the repricer engine + scraper + apply path.
+- `stubhub_commander.py` — email command poller (Approve/Decline/Modify over IMAP).
 - `stubhub_listings.json` — per-listing config (**no secrets**; fill placeholders).
 - `scripts/stubhub_repricer_run.sh` — launchd wrapper (pulls, runs, commits state).
-- `scripts/com.user.stubhub-repricer.plist.tpl` — launchd plist template.
+- `scripts/stubhub_commander_run.sh` — launchd wrapper for the command poller.
+- `scripts/com.user.stubhub-repricer.plist.tpl` — repricer launchd plist template.
+- `scripts/com.user.stubhub-commander.plist.tpl` — commander launchd plist (KeepAlive).
+- `scripts/com.user.stubhub-caffeinate.plist.tpl` — keep-awake agent (`caffeinate -s`).
 - `scripts/install_stubhub_repricer.sh` / `uninstall_stubhub_repricer.sh`.
-- `state/stubhub_prices.json` — per-listing current/recommended/comp-min/history.
+- `scripts/install_stubhub_commander.sh` — installs the poller + generates the HMAC secret.
+- `scripts/install_stubhub_caffeinate.sh` — installs the keep-awake agent.
+- `state/stubhub_prices.json` — per-listing current/recommended/comp-min/history + the
+  HMAC of the pending approve code (never the raw code).
 - `state/stubhub_repricer_failures.json` — consecutive-failure counter.
+
+> The old localhost-only `stubhub_approver.py` HTTP server is **retired** — its
+> `http://127.0.0.1` links only worked on the Mac itself. The email command
+> channel replaces it and works from any device.
 
 ### Setup
 
@@ -489,25 +506,68 @@ cd ~/FIFABILET     # venv + system Chrome as above
 
 # 4. Install the scheduled recommend job (prompts for Gmail creds):
 scripts/install_stubhub_repricer.sh
+
+# 5. Install the email command channel (Approve/Decline/Modify from any device):
+scripts/install_stubhub_commander.sh
+
+# 6. Keep the Mac awake for 24/7 monitoring (no sudo; requires AC power):
+scripts/install_stubhub_caffeinate.sh
+#    For lid-closed (clamshell) operation on AC, ALSO run once:
+sudo pmset -c disablesleep 1
 ```
 
 The job fires ~every 3 hours during waking hours (08/11/14/17/20/23 at :17).
 If you'd rather not automate the edit, you can ignore `--login`/`--apply`
 entirely and just change prices in the StubHub app using the emailed numbers.
 
+> **Gmail IMAP must be on** for the command channel: Gmail (web) → Settings →
+> *Forwarding and POP/IMAP* → **Enable IMAP**. The poller signs in with the same
+> App Password used for sending.
+
 ### Commands
 
 ```bash
 .venv/bin/python stubhub_repricer.py --selftest        # pricing asserts (no network)
-.venv/bin/python stubhub_repricer.py --test            # send a test email
+.venv/bin/python stubhub_repricer.py --test            # send a plain test email
+.venv/bin/python stubhub_repricer.py --sample-email    # send a SAMPLE recommendation with Approve/Decline/Modify buttons (no scrape, no price change) to test the remote loop
 .venv/bin/python stubhub_repricer.py --list-config     # print parsed config
 .venv/bin/python stubhub_repricer.py --list-state      # print stored state
 .venv/bin/python stubhub_repricer.py --probe  KEY      # scrape + dump every parsed listing in your section
 .venv/bin/python stubhub_repricer.py --check  KEY      # scrape + print recommendation + ladder (no email)
-.venv/bin/python stubhub_repricer.py --apply  KEY --dry-run   # preview the edit, no confirm
-.venv/bin/python stubhub_repricer.py --apply  KEY            # set the approved price
+.venv/bin/python stubhub_repricer.py --apply  KEY --dry-run            # preview the edit, no confirm
+.venv/bin/python stubhub_repricer.py --apply  KEY                      # set the LIVE-recommended price (CLI)
+.venv/bin/python stubhub_repricer.py --apply  KEY --price 4500 --check-drift   # APPROVE: set $4,500 all-in, refuse if market drifted
+.venv/bin/python stubhub_repricer.py --apply  KEY --price 4500        # MODIFY: set your exact $4,500 all-in (floor-gated)
 scripts/stubhub_repricer_run.sh                        # one scheduled-style run (writes to log)
 ```
+
+### Remote control: Approve / Decline / Modify from any device
+
+Every recommendation email has three buttons:
+
+| Button | What it does | Money? |
+|--------|--------------|--------|
+| ✅ **Approve** | Apply the price you were emailed. The Mac re-scrapes, and **refuses if the market moved >max(min_change_abs, 3%)** since the email (re-sends a fresh one instead), and refuses to net below cost. | yes |
+| ✏️ **Modify** | Edit the **last number in the subject** to your own all-in price, then send. Applied exactly (still floor + live-payout gated). | yes |
+| ✖︎ **Decline** | Drop the recommendation, no price change. | no |
+
+Each button opens a pre-filled email whose subject is `ACTION <key> <one-time-code>`.
+The Mac's poller verifies (1) the **sender** is you, (2) the **one-time code**
+(single-use; state stores only its HMAC, so even a public repo never leaks a
+usable code), and (3) the recommendation is **< 36 h old**. Latency is ≈ one poll
+(~90 s). Test it safely with `--sample-email` then tapping **Decline** on your
+phone.
+
+> Commands must be **sent from your own Gmail address** (`GMAIL_USER` / `EMAIL_TO`).
+> If your phone composes from a different account, the poller ignores it.
+
+### Why not fully cloud (Mac off)?
+
+StubHub/viagogo sits behind **DataDome**, which blocks datacenter IPs and headless
+browsers — scrapes only succeed from a **residential IP + system Chrome**. The
+apply path also needs the **logged-in Chrome profile that lives on this Mac**. So
+the Mac is the engine; the email channel just lets you *control* it from anywhere.
+The keep-awake agent (`caffeinate -s`, on AC power) keeps it monitoring 24/7.
 
 ### Buyer-fee calibration (improves the "list price to type")
 
@@ -520,16 +580,31 @@ apply-time payout check still refuses anything that nets below your cost.
 
 ### Safety guards
 
-- **Empty/blocked scrape with prior data → treated as a failure** (no price
-  drop recommended); "repricer broken" email after 3 consecutive failures.
-- **Self-exclusion** by section + row + `our_seat` (or `our_listing_id` if set)
-  so the engine never undercuts your own listing.
-- **Apply re-validates, never replays** a stale emailed number, and aborts if
-  the price is no longer lowest or would pay back less than your cost.
-- **Only the price field is ever edited** (StubHub needs delist+relist for
-  seat/qty changes — we never do that).
-- Dedicated Chrome profile (`~/.config/stubhub-repricer/chrome-profile`) so we
-  never fight a lock on your personal Chrome; a live lock fails loudly.
+- **Approved-price binding (drift guard).** Approve applies the *number you saw*,
+  not a silent live recompute. If the live recommendation has moved more than
+  `max(min_change_abs, 3%)` from what you approved, it **refuses** and a fresh
+  recommendation is emailed. (Resale prices can swing fast — this is the single
+  human checkpoint, so it enforces your intent.)
+- **Partial-render guard.** If the page advertises "Showing N of M" and fewer
+  than 60% of M actually rendered, the scrape is treated as a **block** (a thin
+  render yields a confident-but-wrong `competitorMin`).
+- **Comp-stability guard.** A one-run `competitorMin` swing >60% vs the prior run
+  is flagged **low-confidence**: the level is recorded but not emailed/applied
+  until a later run confirms it.
+- **Cost floor + optional margin.** `floor_list = ceil((unit_cost + min_profit) /
+  (1 − fee_rate))`. Set `min_profit` (per ticket, dollars) in `stubhub_listings.json`
+  to keep a buffer against the dynamic real commission. Apply refuses any
+  list-to-type below this floor.
+- **Post-Save payout backstop.** After setting a price, if StubHub's own "You'll
+  get" payout is below your cost, the result email is flagged **⚠️ REVERT NOW**
+  (the real commission can exceed `fee_rate`).
+- **Empty/blocked scrape with prior data → failure** (no drop recommended);
+  "repricer broken" email after 3 consecutive failures.
+- **Self-exclusion** by section + row + `our_seat` / `our_listing_id` (now also
+  populated from the scraped listing link).
+- **Single-use approve codes**, sender-verified, 36 h expiry; **only the price
+  field is ever edited**; dedicated Chrome profile; outbound-only IMAP (no inbound
+  port).
 
 ### ⚠️ FIFA cancellation risk (not a code issue — know this)
 

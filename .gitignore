@@ -14,3 +14,6 @@ venv/
 # StubHub repricer: raw probe dumps + lockfile (not state worth committing)
 state/probe_*.json
 state/.stubhub_repricer.lock
+
+# Claude Code session config
+.claude/
