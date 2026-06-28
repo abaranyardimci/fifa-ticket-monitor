@@ -332,7 +332,7 @@ First run establishes a baseline silently (no alerts).
 One-time:
 
 ```bash
-cd ~/Documents/Claude/FIFABILET
+cd ~/FIFABILET
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m playwright install chromium       # for ATC/FIFA tools
@@ -475,7 +475,7 @@ commission is dynamic, not exactly 15%).
 ### Setup
 
 ```bash
-cd ~/Documents/Claude/FIFABILET     # venv + system Chrome as above
+cd ~/FIFABILET     # venv + system Chrome as above
 
 # 1. Fill stubhub_listings.json: event_url, section, rows, our_seat, quantity,
 #    unit_cost. (compare_mode defaults to "section".)

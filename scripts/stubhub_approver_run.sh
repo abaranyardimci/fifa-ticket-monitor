@@ -3,7 +3,7 @@
 # Sources creds + token from the env file, then execs the Python server.
 set -uo pipefail
 
-REPO_DIR="${STUBHUB_REPO_DIR:-$HOME/Documents/Claude/FIFABILET}"
+REPO_DIR="${STUBHUB_REPO_DIR:-$HOME/FIFABILET}"
 VENV_PYTHON="$REPO_DIR/.venv/bin/python"
 ENV_FILE="$HOME/.config/stubhub-repricer/env"
 LOG_FILE="$HOME/Library/Logs/stubhub-approver.log"
