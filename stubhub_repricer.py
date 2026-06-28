@@ -1169,32 +1169,40 @@ def _apply_locked(cfg: ListingConfig, key: str, dry_run: bool,
             ctx.close()
 
 
-# JS that tags OUR listing's own card + Adjust-price button. It walks up from the
-# listingId link to the SMALLEST ancestor that contains this listing's link and an
-# Adjust button but NO other listing's link — so we can never grab a different
-# listing's controls. Returns {ok:true} (and tags data-bot-card / data-bot-adjust)
-# or {ok:false, reason, status} when this listing has no editable price button.
+# JS that tags OUR listing's own card + the price-edit PEN (the small <svg> next
+# to "$X.XX Price per ticket"). The pen is the universal editor — it exists on
+# EVERY listing, unlike the "Adjust price" button (which only some listings have,
+# and which applies StubHub's *own* recommended price rather than ours). We walk
+# up from the listingId link to the SMALLEST ancestor that contains this listing's
+# link and the "Price per ticket" text but NO other listing's link, so we can
+# never touch a different listing. Returns {ok:true} (tagging data-bot-card /
+# data-bot-pen) or {ok:false, reason, status}.
 _TAG_OUR_LISTING_JS = """(id) => {
   const links = [...document.querySelectorAll("a[href*='listingId=']")];
   const lnk = links.find(a => a.href.includes('listingId=' + id));
   if (!lnk) return {ok:false, reason:'listing link not on page'};
-  let el = lnk, depth = 0, card = null, btn = null;
+  let el = lnk, depth = 0, card = null;
   while (el && depth < 15) {
     const others = [...el.querySelectorAll("a[href*='listingId=']")]
         .filter(a => !a.href.includes('listingId=' + id));
-    const adj = [...el.querySelectorAll('button')]
-        .filter(b => /adjust price/i.test(b.textContent || ''));
-    if (others.length === 0 && adj.length >= 1) { card = el; btn = adj[0]; break; }
+    if (others.length === 0 && /Price per ticket/.test(el.textContent || '')) { card = el; break; }
     el = el.parentElement; depth++;
   }
   document.querySelectorAll('[data-bot-card]').forEach(e => e.removeAttribute('data-bot-card'));
-  document.querySelectorAll('[data-bot-adjust]').forEach(e => e.removeAttribute('data-bot-adjust'));
+  document.querySelectorAll('[data-bot-pen]').forEach(e => e.removeAttribute('data-bot-pen'));
   if (!card) {
     const s = (lnk.closest('div')?.textContent || '').replace(/\\s+/g, ' ').slice(0, 80);
-    return {ok:false, reason:"no Adjust-price button in this listing's own card", status:s};
+    return {ok:false, reason:"no card with 'Price per ticket' for this listing", status:s};
   }
+  // The price-edit pen is the <svg> inside the element whose OWN text is the $ price.
+  let pen = null;
+  for (const e of card.querySelectorAll('div,span')) {
+    const own = [...e.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('');
+    if (/\\$[\\d,]+\\.\\d{2}/.test(own)) { const s = e.querySelector('svg'); if (s) { pen = s; break; } }
+  }
+  if (!pen) return {ok:false, reason:'no price-edit pen found in card'};
   card.setAttribute('data-bot-card', '1');
-  btn.setAttribute('data-bot-adjust', '1');
+  pen.setAttribute('data-bot-pen', '1');
   return {ok:true};
 }"""
 
@@ -1246,7 +1254,7 @@ def _verify_listing_price(page, listing_id: str, target: int) -> bool:
             LOGGER.error("apply: verify could not re-locate listing %s (%s).",
                          listing_id, (res or {}).get("reason", "?"))
             return False
-        page.locator("button[data-bot-adjust='1']").first.click(timeout=10_000)
+        page.locator("[data-bot-pen='1']").first.click(timeout=10_000)
         page.wait_for_timeout(2500)
         val = _money(page.locator("input[type='number']").first.input_value(timeout=6000))
         ok = val is not None and abs(val - target) < 1
@@ -1279,17 +1287,17 @@ def _set_listing_price(page, cfg: ListingConfig, target_list: int, *, dry_run: b
         return None
     res = page.evaluate(_TAG_OUR_LISTING_JS, cfg.our_listing_id)
     if not res or not res.get("ok"):
-        LOGGER.error("apply: no editable 'Adjust price' button for listing %s "
+        LOGGER.error("apply: could not locate the price-edit control for listing %s "
                      "(reason: %s; status: %s). Refusing — will NOT touch any other listing.",
                      cfg.our_listing_id, (res or {}).get("reason", "?"), (res or {}).get("status", "?"))
         return None
-    adjust = page.locator("button[data-bot-adjust='1']").first
+    pen = page.locator("[data-bot-pen='1']").first
     try:
-        adjust.scroll_into_view_if_needed(timeout=4000)
-        adjust.click(timeout=10_000)
+        pen.scroll_into_view_if_needed(timeout=4000)
+        pen.click(timeout=10_000)
         page.wait_for_timeout(2500)
     except Exception as exc:  # noqa: BLE001
-        LOGGER.error("apply: couldn't open the price editor: %s", exc)
+        LOGGER.error("apply: couldn't open the price editor (pen): %s", exc)
         return None
 
     # 2. The editor's number input is page-level (only OUR editor is open now).

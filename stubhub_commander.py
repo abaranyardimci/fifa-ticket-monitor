@@ -35,6 +35,7 @@ import email
 import email.utils
 import hmac
 import imaplib
+import json
 import logging
 import os
 import re
@@ -62,6 +63,30 @@ IMAP_HOST = "imap.gmail.com"
 IMAP_PORT = 993
 POLL_SECONDS = int(os.environ.get("STUBHUB_CMD_POLL_SECONDS", "90"))
 MAX_AGE_HOURS = 36
+
+# Bulletproof de-dup: every command email is processed at most once, keyed by its
+# Message-ID. This is the real guard against reprocessing (Gmail label/expunge
+# behaviour can't be relied on alone). Bounded so the file can't grow forever.
+SEEN_FILE = REPO_DIR / "state" / "stubhub_cmd_seen.json"
+SEEN_MAX = 2000
+
+
+def _load_seen() -> set[str]:
+    try:
+        with SEEN_FILE.open() as fh:
+            data = json.load(fh)
+        return set(data) if isinstance(data, list) else set()
+    except (OSError, json.JSONDecodeError):
+        return set()
+
+
+def _save_seen(seen: set[str]) -> None:
+    try:
+        SEEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with SEEN_FILE.open("w") as fh:
+            json.dump(list(seen)[-SEEN_MAX:], fh)
+    except OSError as exc:  # noqa: BLE001
+        LOGGER.error("could not persist seen-ids: %s", exc)
 
 # Strict subject grammar. Tolerates a leading "Re:"/"Fwd:" in case the user
 # replies instead of using the button. Key is alnum/underscore; nonce is the
@@ -164,35 +189,35 @@ def _too_old(iso: str) -> bool:
 
 
 def _handle(action: str, key: str, nonce: str, price_raw: str | None) -> None:
+    """Process one command. Emails ONLY when a price was really changed or an
+    apply genuinely failed — never for stale/duplicate/declined commands, so old
+    taps can't generate a flood of notifications."""
     action = action.upper()
     ok, reason, pending = _consume_nonce(key, nonce)
     if not ok:
         if reason == "busy":
-            raise _Busy()                   # leave message unread; retry next poll
-        LOGGER.warning("rejected %s %s: %s", action, key, reason)
-        _email_result(f"[StubHub Repricer] ✖︎ {action} {key} rejected", f"Rejected: {reason}")
+            raise _Busy()                   # leave in INBOX; retry next poll
+        # Stale / already-acted / wrong-code: ignore SILENTLY (these are just old
+        # email taps; emailing about them is what caused the notification storm).
+        LOGGER.info("ignoring %s %s: %s", action, key, reason)
         return
 
     if action == "DECLINE":
-        LOGGER.info("declined %s", key)
-        _email_result(f"[StubHub Repricer] ✖︎ Declined {key}",
-                      f"Recommendation for {key} declined; no price change. "
-                      "You'll get a fresh recommendation when the market moves.")
-        return
+        LOGGER.info("declined %s (pending cleared); no email", key)
+        return                              # silent — nothing changed
 
     if action == "APPROVE":
         allin = pending.get("allin")
         if allin is None:
-            _email_result(f"[StubHub Repricer] ⚠ {key} approve issue",
-                          "No stored approved price; aborting.")
+            LOGGER.warning("approve %s had no stored price; ignoring", key)
             return
         LOGGER.info("approving %s at all-in $%s (drift-checked)", key, allin)
         success, body = _run_apply([key, "--price", str(int(allin)), "--check-drift"])
     elif action == "MODIFY":
         n = int((price_raw or "").replace(",", "")) if price_raw else None
         if not n:
-            _email_result(f"[StubHub Repricer] ⚠ {key} modify issue",
-                          "MODIFY needs an all-in price in the subject, e.g. "
+            _email_result(f"[StubHub Repricer] ⚠ {key} modify needs a price",
+                          f"MODIFY needs an all-in price in the subject, e.g. "
                           f"'MODIFY {key} <code> 1450'. No change made.")
             return
         LOGGER.info("modifying %s to all-in $%s", key, n)
@@ -208,17 +233,12 @@ class _Busy(Exception):
     pass
 
 
-def _archive(imap: imaplib.IMAP4_SSL, num) -> None:
-    """Mark processed and remove from INBOX (Gmail keeps it in All Mail) so it's
-    never reprocessed. We must NOT rely on the \\Seen flag for that: Gmail
-    delivers self-sent command mail already marked read, so polling can't filter
-    on UNSEEN. Archiving is the durable 'done' signal instead."""
+def _remove_from_inbox(imap: imaplib.IMAP4_SSL, num) -> None:
+    """Best-effort: take a handled message out of the INBOX so the list stays
+    clean. Real reprocessing protection is the Message-ID seen-set; this is just
+    tidiness. \\Deleted + expunge (done once per poll) archives it in Gmail."""
     try:
-        imap.store(num, "+FLAGS", "\\Seen")
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        imap.store(num, "-X-GM-LABELS", "\\Inbox")  # Gmail: archive out of INBOX
+        imap.store(num, "+FLAGS", "\\Seen \\Deleted")
     except Exception:  # noqa: BLE001
         pass
 
@@ -226,34 +246,49 @@ def _archive(imap: imaplib.IMAP4_SSL, num) -> None:
 def _poll_once(imap: imaplib.IMAP4_SSL) -> None:
     imap.select("INBOX")
     senders = _allowed_senders()
+    seen = _load_seen()
+    seen_changed = False
     # Search by command verb regardless of read/unread — Gmail marks self-sent
     # mail as already read, so an UNSEEN filter would miss your own commands.
-    # Processed messages are archived out of INBOX, so each is handled once.
     typ, data = imap.search(None, "OR", "OR",
                             "SUBJECT", "APPROVE", "SUBJECT", "DECLINE", "SUBJECT", "MODIFY")
     if typ != "OK":
         return
     for num in (data[0].split() if data and data[0] else []):
-        typ, msgdata = imap.fetch(num, "(BODY.PEEK[HEADER.FIELDS (SUBJECT FROM)])")
+        typ, msgdata = imap.fetch(num, "(BODY.PEEK[HEADER.FIELDS (SUBJECT FROM MESSAGE-ID)])")
         if typ != "OK" or not msgdata or not msgdata[0]:
             continue
         msg = email.message_from_bytes(msgdata[0][1])
         subject = _decode(msg.get("Subject", ""))
         m = _SUBJECT_RE.match(subject)
         if not m:
-            continue                        # not one of our commands; leave it in place
+            continue                        # not one of our commands; leave it alone
+        mid = (msg.get("Message-ID") or msg.get("Message-Id") or "").strip()
+        if mid and mid in seen:
+            _remove_from_inbox(imap, num)   # already handled once — never act again
+            continue
         _, from_addr = email.utils.parseaddr(_decode(msg.get("From", "")))
         if from_addr.lower() not in senders:
             LOGGER.warning("ignoring command from unauthorised sender %r", from_addr)
-            _archive(imap, num)
+            if mid:
+                seen.add(mid); seen_changed = True
+            _remove_from_inbox(imap, num)
             continue
         action, key, nonce, price_raw = m.group(1), m.group(2), m.group(3), m.group(4)
         try:
             _handle(action, key, nonce, price_raw)
         except _Busy:
             LOGGER.info("engine busy; will retry %s %s next poll", action, key)
-            continue                        # leave in INBOX so we pick it up again
-        _archive(imap, num)
+            continue                        # do NOT mark seen — retry next poll
+        if mid:
+            seen.add(mid); seen_changed = True
+        _remove_from_inbox(imap, num)
+    if seen_changed:
+        _save_seen(seen)
+    try:
+        imap.expunge()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def main() -> int:

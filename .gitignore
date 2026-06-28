@@ -17,3 +17,4 @@ state/.stubhub_repricer.lock
 
 # Claude Code session config
 .claude/
+state/stubhub_cmd_seen.json
