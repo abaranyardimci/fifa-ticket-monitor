@@ -240,6 +240,29 @@ class _Busy(Exception):
     pass
 
 
+LABEL_NAME = "StubHub Repricer"
+
+
+def _label_stubhub_mail(imap: imaplib.IMAP4_SSL) -> None:
+    """Star + label the repricer's own emails so they stand out in a busy inbox.
+    Uses the App Password's full IMAP access (no Gmail filter / connector needed).
+    Idempotent; only the most recent are touched each poll so it stays cheap."""
+    try:
+        try:
+            imap.create('"%s"' % LABEL_NAME)   # create the Gmail label if missing
+        except Exception:  # noqa: BLE001
+            pass
+        typ, data = imap.search(None, "SUBJECT", "Repricer")
+        for i in (data[0].split() if data and data[0] else [])[-12:]:
+            try:
+                imap.store(i, "+X-GM-LABELS", '"%s"' % LABEL_NAME)
+                imap.store(i, "+FLAGS", "\\Flagged")
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.debug("label step skipped: %s", exc)
+
+
 def _remove_from_inbox(imap: imaplib.IMAP4_SSL, num) -> None:
     """Best-effort: take a handled message out of the INBOX so the list stays
     clean. Real reprocessing protection is the Message-ID seen-set; this is just
@@ -292,6 +315,7 @@ def _poll_once(imap: imaplib.IMAP4_SSL) -> None:
         _remove_from_inbox(imap, num)
     if seen_changed:
         _save_seen(seen)
+    _label_stubhub_mail(imap)               # star+label our own mail so it stands out
     try:
         imap.expunge()
     except Exception:  # noqa: BLE001
