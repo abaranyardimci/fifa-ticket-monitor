@@ -151,6 +151,7 @@ class ListingConfig:
     min_change_abs: float
     min_change_pct: float
     min_profit: float = 0.0      # required net margin per ticket on top of cost
+    undercut_abs: float = 0.0    # if >0, undercut the cheapest comp by this many $ (all-in) — beats them by a couple dollars instead of a full undercut_pct
 
     @property
     def floor_list(self) -> int:
@@ -231,6 +232,7 @@ def _coerce_listing_config(key: str, raw: dict) -> ListingConfig:
         min_change_abs=float(raw.get("min_change_abs", 10.0)),
         min_change_pct=float(raw.get("min_change_pct", 0.005)),
         min_profit=float(raw.get("min_profit", 0.0)),
+        undercut_abs=float(raw.get("undercut_abs", 0.0)),
     )
 
 
@@ -533,10 +535,17 @@ def recommend_price(
         cheapest = min(better_equal, key=lambda x: x.price)
         anchor = cheapest.price
         anchor_row = cheapest.row or "?"
-        target = _floor_to_dollar(anchor * (1.0 - cfg.undercut_pct))
+        if cfg.undercut_abs > 0:
+            # Beat the cheapest comparable by a fixed few dollars (all-in) so you're
+            # the lowest by a hair and keep the most price — instead of giving up a
+            # full percent.
+            target = int(math.floor(anchor)) - int(cfg.undercut_abs)
+        else:
+            target = _floor_to_dollar(anchor * (1.0 - cfg.undercut_pct))
         if target >= anchor:
-            target = int(anchor) - 1
-        basis = f"undercut cheapest same-or-better seat ${anchor:,.0f} (row {anchor_row})"
+            target = int(math.floor(anchor)) - 1
+        basis = (f"undercut cheapest same-or-better seat ${anchor:,.0f} (row {anchor_row}) "
+                 f"by ${int(math.floor(anchor)) - target:,}")
     else:
         # We're the best seat; only worse rows exist. Don't chase them down —
         # price a premium above the cheapest worse seat.
