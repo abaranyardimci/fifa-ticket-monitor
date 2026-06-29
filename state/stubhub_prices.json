@@ -1,7 +1,7 @@
 {
   "argentina_capeverde": {
     "current_list": 4710,
-    "current_price": 5132.0,
+    "current_price": 5173.935,
     "history": [
       {
         "comp_min": 3765.0,
@@ -56,26 +56,32 @@
         "rec": 4394,
         "status": "PROMOTE",
         "t": "2026-06-29T03:17:05+00:00"
+      },
+      {
+        "comp_min": 4685.0,
+        "rec": 4683,
+        "status": "PROMOTE",
+        "t": "2026-06-29T12:17:04+00:00"
       }
     ],
     "label": "Argentina vs Cape Verde",
     "last_applied_at": "2026-06-29T01:40:29+00:00",
     "last_applied_list": 4710,
     "last_applied_payout": 4239.0,
-    "last_competitor_min": 3995.0,
-    "last_emailed_at": "2026-06-29T03:17:05+00:00",
-    "last_emailed_price": 4394,
+    "last_competitor_min": 4685.0,
+    "last_emailed_at": "2026-06-29T12:17:04+00:00",
+    "last_emailed_price": 4683,
     "last_emailed_status": "PROMOTE",
-    "last_listing_count": 1,
+    "last_listing_count": 2,
     "last_status": "PROMOTE",
-    "pending_allin": 4394,
-    "pending_at": "2026-06-29T03:17:05+00:00",
-    "pending_list": 4000,
-    "pending_nonce_hmac": "cdecb6a9561aeb35dd3109eb06e22ad992903a0775af7fabc31f79018b6f45ff",
-    "recommended_list": 4000,
-    "recommended_price": 4394,
+    "pending_allin": 4683,
+    "pending_at": "2026-06-29T12:17:04+00:00",
+    "pending_list": 4263,
+    "pending_nonce_hmac": "5b229e5b22aec9f3057bda162a9491001f5ed2162bd4737a345c4cc3ff8a8373",
+    "recommended_list": 4263,
+    "recommended_price": 4683,
     "section": "138",
-    "updated_at": "2026-06-29T03:17:05+00:00"
+    "updated_at": "2026-06-29T12:17:04+00:00"
   },
   "m103": {
     "current_list": 3539,
@@ -134,6 +140,12 @@
         "rec": 3921,
         "status": "RAISE",
         "t": "2026-06-29T03:17:05+00:00"
+      },
+      {
+        "comp_min": 3923.0,
+        "rec": 3921,
+        "status": "RAISE",
+        "t": "2026-06-29T12:17:04+00:00"
       }
     ],
     "label": "M103 (L101 vs L102)",
@@ -153,7 +165,7 @@
     "recommended_list": 3539,
     "recommended_price": 3921,
     "section": "215",
-    "updated_at": "2026-06-29T03:17:05+00:00"
+    "updated_at": "2026-06-29T12:17:04+00:00"
   },
   "m89": {
     "current_price": 3891.0,
@@ -211,6 +223,12 @@
         "rec": 6985,
         "status": "RAISE",
         "t": "2026-06-29T03:17:05+00:00"
+      },
+      {
+        "comp_min": 6987.0,
+        "rec": 6985,
+        "status": "RAISE",
+        "t": "2026-06-29T12:17:04+00:00"
       }
     ],
     "label": "M89 (W74 vs W77)",
@@ -227,6 +245,6 @@
     "recommended_list": 6358,
     "recommended_price": 6985,
     "section": "105",
-    "updated_at": "2026-06-29T03:17:05+00:00"
+    "updated_at": "2026-06-29T12:17:04+00:00"
   }
 }
