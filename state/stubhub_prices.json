@@ -206,6 +206,12 @@
         "rec": 3921,
         "status": "RAISE",
         "t": "2026-06-29T17:17:06+00:00"
+      },
+      {
+        "comp_min": 3923.0,
+        "rec": 3921,
+        "status": "RAISE",
+        "t": "2026-06-29T18:17:06+00:00"
       }
     ],
     "label": "M103 (L101 vs L102)",
@@ -221,7 +227,7 @@
     "recommended_list": 3539,
     "recommended_price": 3921,
     "section": "215",
-    "updated_at": "2026-06-29T17:17:06+00:00"
+    "updated_at": "2026-06-29T18:17:06+00:00"
   },
   "m89": {
     "current_price": 3891.0,
@@ -315,6 +321,12 @@
         "rec": 5239,
         "status": "RAISE",
         "t": "2026-06-29T17:17:06+00:00"
+      },
+      {
+        "comp_min": 5241.0,
+        "rec": 5239,
+        "status": "RAISE",
+        "t": "2026-06-29T18:17:06+00:00"
       }
     ],
     "label": "M89 (W74 vs W77)",
@@ -322,7 +334,7 @@
     "last_emailed_at": "2026-06-29T17:17:06+00:00",
     "last_emailed_price": 5239,
     "last_emailed_status": "RAISE",
-    "last_listing_count": 6,
+    "last_listing_count": 7,
     "last_status": "RAISE",
     "pending_allin": 5239,
     "pending_at": "2026-06-29T17:17:06+00:00",
@@ -331,6 +343,6 @@
     "recommended_list": 4768,
     "recommended_price": 5239,
     "section": "105",
-    "updated_at": "2026-06-29T17:17:06+00:00"
+    "updated_at": "2026-06-29T18:17:06+00:00"
   }
 }
