@@ -225,7 +225,14 @@ def _handle(action: str, key: str, nonce: str, price_raw: str | None) -> None:
     else:
         return
 
-    subj = f"[StubHub Repricer] {'✓ applied' if success else '⚠ apply issue'}: {action} {key}"
+    if success:
+        subj = f"[StubHub Repricer] ✓ applied: {action} {key}"
+    elif "MARKET MOVED" in body:
+        # The drift guard refused a stale approved price — this is the safety
+        # feature working, not a failure. Label it clearly and reassuringly.
+        subj = f"[StubHub Repricer] ↻ {key}: price moved since the email — NOT changed (safe)"
+    else:
+        subj = f"[StubHub Repricer] ⚠ apply issue: {action} {key}"
     _email_result(subj, body)
 
 
