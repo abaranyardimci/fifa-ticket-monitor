@@ -619,7 +619,15 @@ def evaluate_listing(cfg: ListingConfig, state_entry: dict) -> tuple[Recommendat
                f"partial render ({len(listings)}/{m_total})"
 
     own = next((l for l in listings if is_own_listing(cfg, l)), None)
-    current = float(own.price) if own else state_entry.get("current_price")
+    if own:
+        current = float(own.price)                       # found our listing in this scrape
+    else:
+        # Our listing wasn't in this scrape (e.g. a thin/partial page) — use the
+        # list price we last SET via the tool (authoritative), converted to all-in,
+        # rather than a possibly-stale all-in. Keeps the emailed "current" accurate.
+        last_list = state_entry.get("current_list") or state_entry.get("last_applied_list")
+        current = (float(last_list) * (1.0 + cfg.buyer_fee) if last_list
+                   else state_entry.get("current_price"))
     current_f = float(current) if current is not None else None
 
     section_comps = filter_comparables(cfg, listings)  # section, qty-ok, excludes ours
