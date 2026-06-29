@@ -1,7 +1,7 @@
 {
   "argentina_capeverde": {
-    "current_list": 4710,
-    "current_price": 5173.935,
+    "current_list": 4263,
+    "current_price": 4645.0,
     "history": [
       {
         "comp_min": 3765.0,
@@ -62,26 +62,32 @@
         "rec": 4683,
         "status": "PROMOTE",
         "t": "2026-06-29T12:17:04+00:00"
+      },
+      {
+        "comp_min": 3995.0,
+        "rec": 4394,
+        "status": "PROMOTE",
+        "t": "2026-06-29T13:17:04+00:00"
       }
     ],
     "label": "Argentina vs Cape Verde",
-    "last_applied_at": "2026-06-29T01:40:29+00:00",
-    "last_applied_list": 4710,
-    "last_applied_payout": 4239.0,
-    "last_competitor_min": 4685.0,
-    "last_emailed_at": "2026-06-29T12:17:04+00:00",
-    "last_emailed_price": 4683,
+    "last_applied_at": "2026-06-29T12:38:55+00:00",
+    "last_applied_list": 4263,
+    "last_applied_payout": 3836.7,
+    "last_competitor_min": 3995.0,
+    "last_emailed_at": "2026-06-29T13:17:04+00:00",
+    "last_emailed_price": 4394,
     "last_emailed_status": "PROMOTE",
-    "last_listing_count": 2,
+    "last_listing_count": 1,
     "last_status": "PROMOTE",
-    "pending_allin": 4683,
-    "pending_at": "2026-06-29T12:17:04+00:00",
-    "pending_list": 4263,
-    "pending_nonce_hmac": "5b229e5b22aec9f3057bda162a9491001f5ed2162bd4737a345c4cc3ff8a8373",
-    "recommended_list": 4263,
-    "recommended_price": 4683,
+    "pending_allin": 4394,
+    "pending_at": "2026-06-29T13:17:04+00:00",
+    "pending_list": 4000,
+    "pending_nonce_hmac": "96c0ac58722b47705dadba71f1d0ca1684ccad5253686b3bb1910a486e12dc32",
+    "recommended_list": 4000,
+    "recommended_price": 4394,
     "section": "138",
-    "updated_at": "2026-06-29T12:17:04+00:00"
+    "updated_at": "2026-06-29T13:17:04+00:00"
   },
   "m103": {
     "current_list": 3539,
@@ -146,6 +152,12 @@
         "rec": 3921,
         "status": "RAISE",
         "t": "2026-06-29T12:17:04+00:00"
+      },
+      {
+        "comp_min": 3923.0,
+        "rec": 3921,
+        "status": "RAISE",
+        "t": "2026-06-29T13:17:04+00:00"
       }
     ],
     "label": "M103 (L101 vs L102)",
@@ -165,10 +177,10 @@
     "recommended_list": 3539,
     "recommended_price": 3921,
     "section": "215",
-    "updated_at": "2026-06-29T12:17:04+00:00"
+    "updated_at": "2026-06-29T13:17:04+00:00"
   },
   "m89": {
-    "current_price": 3891.0,
+    "current_price": 4377.0,
     "history": [
       {
         "comp_min": 3279.0,
@@ -229,22 +241,28 @@
         "rec": 6985,
         "status": "RAISE",
         "t": "2026-06-29T12:17:04+00:00"
+      },
+      {
+        "comp_min": 7860.0,
+        "rec": 7858,
+        "status": "RAISE",
+        "t": "2026-06-29T13:17:04+00:00"
       }
     ],
     "label": "M89 (W74 vs W77)",
-    "last_competitor_min": 6987.0,
-    "last_emailed_at": "2026-06-29T03:17:05+00:00",
-    "last_emailed_price": 6985,
+    "last_competitor_min": 7860.0,
+    "last_emailed_at": "2026-06-29T13:17:04+00:00",
+    "last_emailed_price": 7858,
     "last_emailed_status": "RAISE",
     "last_listing_count": 2,
     "last_status": "RAISE",
-    "pending_allin": 6985,
-    "pending_at": "2026-06-29T03:17:05+00:00",
-    "pending_list": 6358,
-    "pending_nonce_hmac": "90348744dbe27fd601d723c5711f100e0fcc9ff992d3dca661ba0038e3567231",
-    "recommended_list": 6358,
-    "recommended_price": 6985,
+    "pending_allin": 7858,
+    "pending_at": "2026-06-29T13:17:04+00:00",
+    "pending_list": 7152,
+    "pending_nonce_hmac": "93b54342d33016cc25e613cc2a8e8997c755ec51d2a32785c9ca0f6d8d24979b",
+    "recommended_list": 7152,
+    "recommended_price": 7858,
     "section": "105",
-    "updated_at": "2026-06-29T12:17:04+00:00"
+    "updated_at": "2026-06-29T13:17:04+00:00"
   }
 }
