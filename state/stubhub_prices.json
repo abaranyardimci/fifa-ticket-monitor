@@ -13,6 +13,12 @@
         "rec": 5093,
         "status": "CAPPED_NOT_LOWEST",
         "t": "2026-06-30T13:17:05+00:00"
+      },
+      {
+        "comp_min": 3270.0,
+        "rec": 5093,
+        "status": "CAPPED_NOT_LOWEST",
+        "t": "2026-06-30T14:17:05+00:00"
       }
     ],
     "label": "Argentina vs Cabo Verde (Sec 111 R1 S2)",
@@ -20,7 +26,7 @@
     "last_emailed_at": "2026-06-30T13:17:05+00:00",
     "last_emailed_price": 5093,
     "last_emailed_status": "CAPPED_NOT_LOWEST",
-    "last_listing_count": 2,
+    "last_listing_count": 3,
     "last_status": "CAPPED_NOT_LOWEST",
     "pending_allin": 5093,
     "pending_at": "2026-06-30T13:17:05+00:00",
@@ -29,11 +35,11 @@
     "recommended_list": 4192,
     "recommended_price": 5093,
     "section": "111",
-    "updated_at": "2026-06-30T13:17:05+00:00"
+    "updated_at": "2026-06-30T14:17:05+00:00"
   },
   "m103": {
     "current_list": 3539,
-    "current_price": 4359.0,
+    "current_price": 4863.0,
     "history": [
       {
         "comp_min": 4490.0,
@@ -190,26 +196,32 @@
         "rec": 4466,
         "status": "RAISE",
         "t": "2026-06-30T13:17:05+00:00"
+      },
+      {
+        "comp_min": 4984.0,
+        "rec": 4982,
+        "status": "RAISE",
+        "t": "2026-06-30T14:17:05+00:00"
       }
     ],
     "label": "M103 (L101 vs L102)",
     "last_applied_at": "2026-06-29T16:36:22+00:00",
     "last_applied_list": 3539,
     "last_applied_payout": 6370.2,
-    "last_competitor_min": 4468.0,
-    "last_emailed_at": "2026-06-30T12:17:06+00:00",
-    "last_emailed_price": 4466,
+    "last_competitor_min": 4984.0,
+    "last_emailed_at": "2026-06-30T14:17:05+00:00",
+    "last_emailed_price": 4982,
     "last_emailed_status": "RAISE",
     "last_listing_count": 1,
     "last_status": "RAISE",
-    "pending_allin": 4466,
-    "pending_at": "2026-06-30T12:17:06+00:00",
-    "pending_list": 4031,
-    "pending_nonce_hmac": "989f4e1fa871843fac14df2329fbcd13abf6d0a29d76729ded64503a12d7d312",
-    "recommended_list": 4031,
-    "recommended_price": 4466,
+    "pending_allin": 4982,
+    "pending_at": "2026-06-30T14:17:05+00:00",
+    "pending_list": 4497,
+    "pending_nonce_hmac": "c275e529b3a649855f1e2a68c21b68d51a0c219778ae4188a0f19d285a2fb870",
+    "recommended_list": 4497,
+    "recommended_price": 4982,
     "section": "215",
-    "updated_at": "2026-06-30T13:17:05+00:00"
+    "updated_at": "2026-06-30T14:17:05+00:00"
   },
   "m89": {
     "current_price": 1963.0,
@@ -375,6 +387,12 @@
         "rec": 3522,
         "status": "RAISE",
         "t": "2026-06-30T13:17:05+00:00"
+      },
+      {
+        "comp_min": 3524.0,
+        "rec": 3522,
+        "status": "RAISE",
+        "t": "2026-06-30T14:17:05+00:00"
       }
     ],
     "label": "M89 (W74 vs W77)",
@@ -391,6 +409,6 @@
     "recommended_list": 3206,
     "recommended_price": 3522,
     "section": "105",
-    "updated_at": "2026-06-30T13:17:05+00:00"
+    "updated_at": "2026-06-30T14:17:05+00:00"
   }
 }
