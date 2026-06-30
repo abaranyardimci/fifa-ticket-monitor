@@ -37,10 +37,16 @@
         "rec": 4167,
         "status": "CAPPED_NOT_LOWEST",
         "t": "2026-06-30T17:17:06+00:00"
+      },
+      {
+        "comp_min": 2981.0,
+        "rec": 4167,
+        "status": "CAPPED_NOT_LOWEST",
+        "t": "2026-06-30T18:17:06+00:00"
       }
     ],
     "label": "Argentina vs Cabo Verde (Sec 111 R1 S2)",
-    "last_competitor_min": 2957.0,
+    "last_competitor_min": 2981.0,
     "last_emailed_at": "2026-06-30T16:17:06+00:00",
     "last_emailed_price": 4167,
     "last_emailed_status": "CAPPED_NOT_LOWEST",
@@ -53,18 +59,12 @@
     "recommended_list": 3430,
     "recommended_price": 4167,
     "section": "111",
-    "updated_at": "2026-06-30T17:17:06+00:00"
+    "updated_at": "2026-06-30T18:17:06+00:00"
   },
   "m103": {
     "current_list": 3539,
     "current_price": 4141.0,
     "history": [
-      {
-        "comp_min": 4490.0,
-        "rec": 4445,
-        "status": "RAISE",
-        "t": "2026-06-28T18:35:44+00:00"
-      },
       {
         "comp_min": 4528.0,
         "rec": 4482,
@@ -238,6 +238,12 @@
         "rec": 4466,
         "status": "RAISE",
         "t": "2026-06-30T17:17:06+00:00"
+      },
+      {
+        "comp_min": 4468.0,
+        "rec": 4466,
+        "status": "RAISE",
+        "t": "2026-06-30T18:17:06+00:00"
       }
     ],
     "label": "M103 (L101 vs L102)",
@@ -257,17 +263,11 @@
     "recommended_list": 4031,
     "recommended_price": 4466,
     "section": "215",
-    "updated_at": "2026-06-30T17:17:06+00:00"
+    "updated_at": "2026-06-30T18:17:06+00:00"
   },
   "m89": {
-    "current_price": 1774.0,
+    "current_price": 1731.0,
     "history": [
-      {
-        "comp_min": 7045.0,
-        "rec": 6974,
-        "status": "RAISE",
-        "t": "2026-06-28T19:52:41+00:00"
-      },
       {
         "comp_min": 7045.0,
         "rec": 6974,
@@ -441,22 +441,28 @@
         "rec": 2864,
         "status": "RAISE",
         "t": "2026-06-30T17:17:06+00:00"
+      },
+      {
+        "comp_min": 2796.0,
+        "rec": 2794,
+        "status": "RAISE",
+        "t": "2026-06-30T18:17:06+00:00"
       }
     ],
     "label": "M89 (W74 vs W77)",
-    "last_competitor_min": 2866.0,
-    "last_emailed_at": "2026-06-30T17:17:06+00:00",
-    "last_emailed_price": 2864,
+    "last_competitor_min": 2796.0,
+    "last_emailed_at": "2026-06-30T18:17:06+00:00",
+    "last_emailed_price": 2794,
     "last_emailed_status": "RAISE",
     "last_listing_count": 2,
     "last_status": "RAISE",
-    "pending_allin": 2864,
-    "pending_at": "2026-06-30T17:17:06+00:00",
-    "pending_list": 2607,
-    "pending_nonce_hmac": "d74a34a69e2ac00b9f656f419d2683ebd65cee7e0299e107b37099677494cedf",
-    "recommended_list": 2607,
-    "recommended_price": 2864,
+    "pending_allin": 2794,
+    "pending_at": "2026-06-30T18:17:06+00:00",
+    "pending_list": 2543,
+    "pending_nonce_hmac": "727d1c9189a3733c2131a2cbeadb75def63c16f413ea0cd0690e056a9390cc09",
+    "recommended_list": 2543,
+    "recommended_price": 2794,
     "section": "105",
-    "updated_at": "2026-06-30T17:17:06+00:00"
+    "updated_at": "2026-06-30T18:17:06+00:00"
   }
 }
