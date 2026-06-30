@@ -128,6 +128,12 @@
         "rec": 3943,
         "status": "PROMOTE",
         "t": "2026-06-30T00:17:03+00:00"
+      },
+      {
+        "comp_min": 3945.0,
+        "rec": 3943,
+        "status": "PROMOTE",
+        "t": "2026-06-30T01:17:04+00:00"
       }
     ],
     "label": "Argentina vs Cape Verde",
@@ -147,7 +153,7 @@
     "recommended_list": 3589,
     "recommended_price": 3943,
     "section": "138",
-    "updated_at": "2026-06-30T00:17:03+00:00"
+    "updated_at": "2026-06-30T01:17:04+00:00"
   },
   "m103": {
     "current_list": 3539,
@@ -306,7 +312,7 @@
     "updated_at": "2026-06-30T00:17:03+00:00"
   },
   "m89": {
-    "current_price": 3891.0,
+    "current_price": 2164.0,
     "history": [
       {
         "comp_min": 3279.0,
@@ -439,22 +445,28 @@
         "rec": 3307,
         "status": "CAPPED_NOT_LOWEST",
         "t": "2026-06-30T00:17:03+00:00"
+      },
+      {
+        "comp_min": 3524.0,
+        "rec": 3522,
+        "status": "RAISE",
+        "t": "2026-06-30T01:17:04+00:00"
       }
     ],
     "label": "M89 (W74 vs W77)",
-    "last_competitor_min": 1548.0,
+    "last_competitor_min": 3524.0,
     "last_emailed_at": "2026-06-29T23:17:03+00:00",
     "last_emailed_price": 5239,
     "last_emailed_status": "RAISE",
-    "last_listing_count": 3,
-    "last_status": "CAPPED_NOT_LOWEST/LOW_CONFIDENCE",
+    "last_listing_count": 7,
+    "last_status": "RAISE/LOW_CONFIDENCE",
     "pending_allin": 5239,
     "pending_at": "2026-06-29T23:17:03+00:00",
     "pending_list": 4768,
     "pending_nonce_hmac": "45d74331a5c24f22fb2219c5a65cbf1826522c7defb38c8d5ea0a145bc3100e0",
-    "recommended_list": 3010,
-    "recommended_price": 3307,
+    "recommended_list": 3206,
+    "recommended_price": 3522,
     "section": "105",
-    "updated_at": "2026-06-30T00:17:03+00:00"
+    "updated_at": "2026-06-30T01:17:04+00:00"
   }
 }
