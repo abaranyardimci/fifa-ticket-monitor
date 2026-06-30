@@ -1,25 +1,25 @@
 {
   "_comment": "StubHub repricer config. No secrets here (Gmail creds live in ~/.config/stubhub-repricer/env). Prices on StubHub are ALL-IN (incl. buyer fee); the engine compares all-in-to-all-in and converts to a seller list price using buyer_fee_pct (null -> 0.27 default) only for the floor check and the price to type. our_seat lets the engine exclude your own listing (verify it via --probe). compare_mode: 'section' compares against any row in your section (recommended, since you're usually the only seller in your exact row); 'row' compares only same/similar rows (row_tolerance). event_datetime only stops management after the match. fee_rate is your StubHub seller commission estimate; the authoritative payout floor is checked live at apply-time. our_listing_id is optional (capture from the listing URL after --login) for precise self-exclusion.",
 
-  "argentina_capeverde": {
-    "label": "Argentina vs Cape Verde",
+  "argentina_111": {
+    "label": "Argentina vs Cabo Verde (Sec 111 R1 S2)",
     "event_url": "https://www.stubhub.com/world-cup-miami-tickets-7-3-2026/event/153023861/?listingQty=&quantity=1",
     "event_datetime": "2026-07-03T23:59:00-04:00",
-    "section": "138",
+    "section": "111",
     "rows": ["1"],
-    "our_seat": "24",
+    "our_seat": "2",
     "row_tolerance": 0,
     "compare_mode": "section",
     "quantity": 1,
     "sell_together": true,
-    "our_listing_id": "13149313944",
+    "our_listing_id": "13188840973",
     "unit_cost": 2361,
     "fee_rate": 0.10,
     "undercut_pct": 0.01,
     "undercut_abs": 2,
     "max_drop_pct": 0.15,
     "currency": "USD",
-    "buyer_fee_pct": 0.0985,
+    "buyer_fee_pct": 0.215,
     "min_change_abs": 10,
     "min_change_pct": 0.005
   },
