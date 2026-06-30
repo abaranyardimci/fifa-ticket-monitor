@@ -163,7 +163,7 @@
   },
   "m103": {
     "current_list": 3539,
-    "current_price": 4359.0,
+    "current_price": 4755.0,
     "history": [
       {
         "comp_min": 4490.0,
@@ -302,29 +302,35 @@
         "rec": 4466,
         "status": "RAISE",
         "t": "2026-06-30T02:17:06+00:00"
+      },
+      {
+        "comp_min": 4874.0,
+        "rec": 4872,
+        "status": "RAISE",
+        "t": "2026-06-30T03:17:01+00:00"
       }
     ],
     "label": "M103 (L101 vs L102)",
     "last_applied_at": "2026-06-29T16:36:22+00:00",
     "last_applied_list": 3539,
     "last_applied_payout": 6370.2,
-    "last_competitor_min": 4468.0,
-    "last_emailed_at": "2026-06-30T00:17:03+00:00",
-    "last_emailed_price": 4466,
+    "last_competitor_min": 4874.0,
+    "last_emailed_at": "2026-06-30T03:17:01+00:00",
+    "last_emailed_price": 4872,
     "last_emailed_status": "RAISE",
     "last_listing_count": 1,
     "last_status": "RAISE",
-    "pending_allin": 4466,
-    "pending_at": "2026-06-30T00:17:03+00:00",
-    "pending_list": 4031,
-    "pending_nonce_hmac": "5eb35e783071d72adde648e4601f9bff7bf081ab8bab8a79e6c65778ab49fef1",
-    "recommended_list": 4031,
-    "recommended_price": 4466,
+    "pending_allin": 4872,
+    "pending_at": "2026-06-30T03:17:01+00:00",
+    "pending_list": 4398,
+    "pending_nonce_hmac": "8dab5a1c77c3dad0d725eddc044a514b8281e488c2c7eff25d4ca767713764af",
+    "recommended_list": 4398,
+    "recommended_price": 4872,
     "section": "215",
-    "updated_at": "2026-06-30T02:17:06+00:00"
+    "updated_at": "2026-06-30T03:17:01+00:00"
   },
   "m89": {
-    "current_price": 2164.0,
+    "current_price": 1947.0,
     "history": [
       {
         "comp_min": 3279.0,
@@ -469,22 +475,28 @@
         "rec": 3522,
         "status": "RAISE",
         "t": "2026-06-30T02:17:06+00:00"
+      },
+      {
+        "comp_min": 3495.0,
+        "rec": 3493,
+        "status": "RAISE",
+        "t": "2026-06-30T03:17:01+00:00"
       }
     ],
     "label": "M89 (W74 vs W77)",
-    "last_competitor_min": 3524.0,
-    "last_emailed_at": "2026-06-30T02:17:06+00:00",
-    "last_emailed_price": 3522,
+    "last_competitor_min": 3495.0,
+    "last_emailed_at": "2026-06-30T03:17:01+00:00",
+    "last_emailed_price": 3493,
     "last_emailed_status": "RAISE",
-    "last_listing_count": 8,
+    "last_listing_count": 5,
     "last_status": "RAISE",
-    "pending_allin": 3522,
-    "pending_at": "2026-06-30T02:17:06+00:00",
-    "pending_list": 3206,
-    "pending_nonce_hmac": "9caa4060f41b4fbb2d930c879a2e003b0d96ef4cc98fc0e3d094352fa01f258c",
-    "recommended_list": 3206,
-    "recommended_price": 3522,
+    "pending_allin": 3493,
+    "pending_at": "2026-06-30T03:17:01+00:00",
+    "pending_list": 3179,
+    "pending_nonce_hmac": "4de175d98c7fe97177e9adc41bca1abbf8052650a99fa538c486e098ad2dfed2",
+    "recommended_list": 3179,
+    "recommended_price": 3493,
     "section": "105",
-    "updated_at": "2026-06-30T02:17:06+00:00"
+    "updated_at": "2026-06-30T03:17:01+00:00"
   }
 }
