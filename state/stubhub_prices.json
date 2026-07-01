@@ -91,14 +91,20 @@
         "rec": 3189,
         "status": "HOLD_AT_FLOOR",
         "t": "2026-07-01T03:17:06+00:00"
+      },
+      {
+        "comp_min": 2793.0,
+        "rec": 3189,
+        "status": "HOLD_AT_FLOOR",
+        "t": "2026-07-01T12:17:05+00:00"
       }
     ],
     "label": "Argentina vs Cabo Verde (Sec 111 R1 S2)",
-    "last_competitor_min": 2411.0,
+    "last_competitor_min": 2793.0,
     "last_emailed_at": "2026-06-30T21:17:06+00:00",
     "last_emailed_price": 3189,
     "last_emailed_status": "HOLD_AT_FLOOR",
-    "last_listing_count": 2,
+    "last_listing_count": 1,
     "last_status": "HOLD_AT_FLOOR",
     "pending_allin": 3189,
     "pending_at": "2026-06-30T21:17:06+00:00",
@@ -107,18 +113,12 @@
     "recommended_list": 2625,
     "recommended_price": 3189,
     "section": "111",
-    "updated_at": "2026-07-01T03:17:06+00:00"
+    "updated_at": "2026-07-01T12:17:05+00:00"
   },
   "m103": {
     "current_list": 3998,
-    "current_price": 4105.0,
+    "current_price": 4357.0,
     "history": [
-      {
-        "comp_min": 3923.0,
-        "rec": 3921,
-        "status": "RAISE",
-        "t": "2026-06-29T13:17:04+00:00"
-      },
       {
         "comp_min": 3923.0,
         "rec": 3921,
@@ -292,36 +292,36 @@
         "rec": 4207,
         "status": "RAISE",
         "t": "2026-07-01T03:17:06+00:00"
+      },
+      {
+        "comp_min": 4468.0,
+        "rec": 4466,
+        "status": "RAISE",
+        "t": "2026-07-01T12:17:05+00:00"
       }
     ],
     "label": "M103 (L101 vs L102)",
     "last_applied_at": "2026-06-30T23:25:13+00:00",
     "last_applied_list": 3998,
     "last_applied_payout": 7196.4,
-    "last_competitor_min": 4209.0,
-    "last_emailed_at": "2026-07-01T03:17:06+00:00",
-    "last_emailed_price": 4207,
+    "last_competitor_min": 4468.0,
+    "last_emailed_at": "2026-07-01T12:17:05+00:00",
+    "last_emailed_price": 4466,
     "last_emailed_status": "RAISE",
     "last_listing_count": 1,
     "last_status": "RAISE",
-    "pending_allin": 4207,
-    "pending_at": "2026-07-01T03:17:06+00:00",
-    "pending_list": 3798,
-    "pending_nonce_hmac": "176c780b92e28e3ea4bed49a9c8a48924728669b802ceece3856f2e3711b3c41",
-    "recommended_list": 3798,
-    "recommended_price": 4207,
+    "pending_allin": 4466,
+    "pending_at": "2026-07-01T12:17:05+00:00",
+    "pending_list": 4031,
+    "pending_nonce_hmac": "ee2db722f7d14e5342bfaa64ef4e5ef183b450060f60ed6dc6cbc0fab62b04ce",
+    "recommended_list": 4031,
+    "recommended_price": 4466,
     "section": "215",
-    "updated_at": "2026-07-01T03:17:06+00:00"
+    "updated_at": "2026-07-01T12:17:05+00:00"
   },
   "m89": {
     "current_price": 1745.0,
     "history": [
-      {
-        "comp_min": 7161.0,
-        "rec": 7159,
-        "status": "RAISE",
-        "t": "2026-06-29T14:17:03+00:00"
-      },
       {
         "comp_min": 5110.0,
         "rec": 5108,
@@ -495,22 +495,28 @@
         "rec": 3074,
         "status": "RAISE",
         "t": "2026-07-01T03:17:06+00:00"
+      },
+      {
+        "comp_min": 2796.0,
+        "rec": 2794,
+        "status": "RAISE",
+        "t": "2026-07-01T12:17:05+00:00"
       }
     ],
     "label": "M89 (W74 vs W77)",
-    "last_competitor_min": 3076.0,
-    "last_emailed_at": "2026-07-01T03:17:06+00:00",
-    "last_emailed_price": 3074,
+    "last_competitor_min": 2796.0,
+    "last_emailed_at": "2026-07-01T12:17:05+00:00",
+    "last_emailed_price": 2794,
     "last_emailed_status": "RAISE",
     "last_listing_count": 4,
     "last_status": "RAISE",
-    "pending_allin": 3074,
-    "pending_at": "2026-07-01T03:17:06+00:00",
-    "pending_list": 2798,
-    "pending_nonce_hmac": "1cda1f7afaca09a580b9d4037dbdaa303f3fc799bf1b3aae732996e387706bb8",
-    "recommended_list": 2798,
-    "recommended_price": 3074,
+    "pending_allin": 2794,
+    "pending_at": "2026-07-01T12:17:05+00:00",
+    "pending_list": 2543,
+    "pending_nonce_hmac": "b4237e014193b36388eea2eff80794287c84c7523a6c9de5081e132b3d24d2cd",
+    "recommended_list": 2543,
+    "recommended_price": 2794,
     "section": "105",
-    "updated_at": "2026-07-01T03:17:06+00:00"
+    "updated_at": "2026-07-01T12:17:05+00:00"
   }
 }
