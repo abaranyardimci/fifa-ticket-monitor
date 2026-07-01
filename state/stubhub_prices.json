@@ -115,6 +115,12 @@
         "rec": 3189,
         "status": "HOLD_AT_FLOOR",
         "t": "2026-07-01T15:17:04+00:00"
+      },
+      {
+        "comp_min": 2793.0,
+        "rec": 3189,
+        "status": "HOLD_AT_FLOOR",
+        "t": "2026-07-01T16:17:06+00:00"
       }
     ],
     "label": "Argentina vs Cabo Verde (Sec 111 R1 S2)",
@@ -131,18 +137,12 @@
     "recommended_list": 2625,
     "recommended_price": 3189,
     "section": "111",
-    "updated_at": "2026-07-01T15:17:04+00:00"
+    "updated_at": "2026-07-01T16:17:06+00:00"
   },
   "m103": {
     "current_list": 3998,
     "current_price": 4357.0,
     "history": [
-      {
-        "comp_min": 3923.0,
-        "rec": 3921,
-        "status": "RAISE",
-        "t": "2026-06-29T17:17:06+00:00"
-      },
       {
         "comp_min": 3923.0,
         "rec": 3921,
@@ -316,6 +316,12 @@
         "rec": 4466,
         "status": "RAISE",
         "t": "2026-07-01T15:17:04+00:00"
+      },
+      {
+        "comp_min": 4468.0,
+        "rec": 4466,
+        "status": "RAISE",
+        "t": "2026-07-01T16:17:06+00:00"
       }
     ],
     "label": "M103 (L101 vs L102)",
@@ -335,7 +341,7 @@
     "recommended_list": 4031,
     "recommended_price": 4466,
     "section": "215",
-    "updated_at": "2026-07-01T15:17:04+00:00"
+    "updated_at": "2026-07-01T16:17:06+00:00"
   },
   "m89": {
     "current_price": 1745.0,
