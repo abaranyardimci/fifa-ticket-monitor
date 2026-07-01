@@ -127,6 +127,12 @@
         "rec": 4323,
         "status": "NO_SELLER",
         "t": "2026-07-01T17:17:05+00:00"
+      },
+      {
+        "comp_min": null,
+        "rec": 4323,
+        "status": "NO_SELLER",
+        "t": "2026-07-01T18:17:05+00:00"
       }
     ],
     "label": "Argentina vs Cabo Verde (Sec 111 R1 S2)",
@@ -143,7 +149,7 @@
     "recommended_list": 3558,
     "recommended_price": 4323,
     "section": "111",
-    "updated_at": "2026-07-01T17:17:05+00:00"
+    "updated_at": "2026-07-01T18:17:05+00:00"
   },
   "m103": {
     "current_list": 3998,
