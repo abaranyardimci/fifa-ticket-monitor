@@ -103,6 +103,12 @@
         "rec": 3189,
         "status": "HOLD_AT_FLOOR",
         "t": "2026-07-01T13:17:04+00:00"
+      },
+      {
+        "comp_min": 2793.0,
+        "rec": 3189,
+        "status": "HOLD_AT_FLOOR",
+        "t": "2026-07-01T14:17:06+00:00"
       }
     ],
     "label": "Argentina vs Cabo Verde (Sec 111 R1 S2)",
@@ -119,18 +125,12 @@
     "recommended_list": 2625,
     "recommended_price": 3189,
     "section": "111",
-    "updated_at": "2026-07-01T13:17:04+00:00"
+    "updated_at": "2026-07-01T14:17:06+00:00"
   },
   "m103": {
     "current_list": 3998,
-    "current_price": 4860.0,
+    "current_price": 4357.0,
     "history": [
-      {
-        "comp_min": 4280.0,
-        "rec": 4278,
-        "status": "RAISE",
-        "t": "2026-06-29T15:17:06+00:00"
-      },
       {
         "comp_min": 3923.0,
         "rec": 3921,
@@ -304,26 +304,32 @@
         "rec": 4982,
         "status": "RAISE",
         "t": "2026-07-01T13:17:04+00:00"
+      },
+      {
+        "comp_min": 4468.0,
+        "rec": 4466,
+        "status": "RAISE",
+        "t": "2026-07-01T14:17:06+00:00"
       }
     ],
     "label": "M103 (L101 vs L102)",
     "last_applied_at": "2026-06-30T23:25:13+00:00",
     "last_applied_list": 3998,
     "last_applied_payout": 7196.4,
-    "last_competitor_min": 4984.0,
-    "last_emailed_at": "2026-07-01T13:17:04+00:00",
-    "last_emailed_price": 4982,
+    "last_competitor_min": 4468.0,
+    "last_emailed_at": "2026-07-01T14:17:06+00:00",
+    "last_emailed_price": 4466,
     "last_emailed_status": "RAISE",
     "last_listing_count": 1,
     "last_status": "RAISE",
-    "pending_allin": 4982,
-    "pending_at": "2026-07-01T13:17:04+00:00",
-    "pending_list": 4497,
-    "pending_nonce_hmac": "1b0ba731eac36bff1383fe8e02934cba79f3c26645c10eac7f3ae63cd653baf2",
-    "recommended_list": 4497,
-    "recommended_price": 4982,
+    "pending_allin": 4466,
+    "pending_at": "2026-07-01T14:17:06+00:00",
+    "pending_list": 4031,
+    "pending_nonce_hmac": "7c244de34b9cfe46b832e18186b177eb6ab75b92bb5cc01f08f287b9dca79b02",
+    "recommended_list": 4031,
+    "recommended_price": 4466,
     "section": "215",
-    "updated_at": "2026-07-01T13:17:04+00:00"
+    "updated_at": "2026-07-01T14:17:06+00:00"
   },
   "m89": {
     "current_price": 1745.0,
