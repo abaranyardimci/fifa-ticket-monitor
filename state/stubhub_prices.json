@@ -6,12 +6,6 @@
         "comp_min": 2793.0,
         "rec": 3189,
         "status": "HOLD_AT_FLOOR",
-        "t": "2026-07-01T12:17:05+00:00"
-      },
-      {
-        "comp_min": 2793.0,
-        "rec": 3189,
-        "status": "HOLD_AT_FLOOR",
         "t": "2026-07-01T13:17:04+00:00"
       },
       {
@@ -181,6 +175,12 @@
         "rec": 3783,
         "status": "NO_SELLER",
         "t": "2026-07-03T01:17:02+00:00"
+      },
+      {
+        "comp_min": null,
+        "rec": 3783,
+        "status": "NO_SELLER",
+        "t": "2026-07-03T02:17:03+00:00"
       }
     ],
     "label": "Argentina vs Cabo Verde (Sec 111 R1 S2)",
@@ -197,7 +197,7 @@
     "recommended_list": 3114,
     "recommended_price": 3783,
     "section": "111",
-    "updated_at": "2026-07-03T01:17:02+00:00"
+    "updated_at": "2026-07-03T02:17:03+00:00"
   },
   "m103": {
     "current_list": 3998,
@@ -410,12 +410,6 @@
         "comp_min": 2820.0,
         "rec": 2818,
         "status": "RAISE",
-        "t": "2026-06-30T21:17:06+00:00"
-      },
-      {
-        "comp_min": 2820.0,
-        "rec": 2818,
-        "status": "RAISE",
         "t": "2026-06-30T22:17:05+00:00"
       },
       {
@@ -585,6 +579,12 @@
         "rec": 1729,
         "status": "PROMOTE",
         "t": "2026-07-03T01:17:02+00:00"
+      },
+      {
+        "comp_min": 1731.0,
+        "rec": 1729,
+        "status": "PROMOTE",
+        "t": "2026-07-03T02:17:03+00:00"
       }
     ],
     "label": "M89 (W74 vs W77)",
@@ -601,6 +601,6 @@
     "recommended_list": 1574,
     "recommended_price": 1729,
     "section": "105",
-    "updated_at": "2026-07-03T01:17:02+00:00"
+    "updated_at": "2026-07-03T02:17:03+00:00"
   }
 }
