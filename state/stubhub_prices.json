@@ -207,12 +207,6 @@
         "comp_min": 4468.0,
         "rec": 4466,
         "status": "RAISE",
-        "t": "2026-07-01T14:17:06+00:00"
-      },
-      {
-        "comp_min": 4468.0,
-        "rec": 4466,
-        "status": "RAISE",
         "t": "2026-07-01T15:17:04+00:00"
       },
       {
@@ -382,6 +376,12 @@
         "rec": 3764,
         "status": "CAPPED_NOT_LOWEST",
         "t": "2026-07-03T17:17:04+00:00"
+      },
+      {
+        "comp_min": 3270.0,
+        "rec": 3764,
+        "status": "CAPPED_NOT_LOWEST",
+        "t": "2026-07-03T18:17:05+00:00"
       }
     ],
     "label": "M103 (L101 vs L102)",
@@ -401,17 +401,11 @@
     "recommended_list": 3398,
     "recommended_price": 3764,
     "section": "215",
-    "updated_at": "2026-07-03T17:17:04+00:00"
+    "updated_at": "2026-07-03T18:17:05+00:00"
   },
   "m89": {
     "current_price": 1745.0,
     "history": [
-      {
-        "comp_min": 2796.0,
-        "rec": 2794,
-        "status": "RAISE",
-        "t": "2026-07-01T01:17:06+00:00"
-      },
       {
         "comp_min": 2796.0,
         "rec": 2794,
@@ -585,22 +579,28 @@
         "rec": 1621,
         "status": "PROMOTE",
         "t": "2026-07-03T17:17:04+00:00"
+      },
+      {
+        "comp_min": 1663.0,
+        "rec": 1661,
+        "status": "PROMOTE",
+        "t": "2026-07-03T18:17:05+00:00"
       }
     ],
     "label": "M89 (W74 vs W77)",
-    "last_competitor_min": 1623.0,
-    "last_emailed_at": "2026-07-03T15:17:05+00:00",
-    "last_emailed_price": 1621,
+    "last_competitor_min": 1663.0,
+    "last_emailed_at": "2026-07-03T18:17:05+00:00",
+    "last_emailed_price": 1661,
     "last_emailed_status": "PROMOTE",
     "last_listing_count": 4,
     "last_status": "PROMOTE",
-    "pending_allin": 1621,
-    "pending_at": "2026-07-03T15:17:05+00:00",
-    "pending_list": 1475,
-    "pending_nonce_hmac": "0413114f2a7395265d7db706bc33c47eca55070c46884bb7520a7b3a11796f50",
-    "recommended_list": 1475,
-    "recommended_price": 1621,
+    "pending_allin": 1661,
+    "pending_at": "2026-07-03T18:17:05+00:00",
+    "pending_list": 1512,
+    "pending_nonce_hmac": "eeca82d62bbd0a436ea81046cd6268f2fd237e054a340e5a95847f6523176c4b",
+    "recommended_list": 1512,
+    "recommended_price": 1661,
     "section": "105",
-    "updated_at": "2026-07-03T17:17:04+00:00"
+    "updated_at": "2026-07-03T18:17:05+00:00"
   }
 }
