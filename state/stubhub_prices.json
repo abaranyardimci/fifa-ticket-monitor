@@ -204,12 +204,6 @@
     "current_price": 4428.9844,
     "history": [
       {
-        "comp_min": 3545.0,
-        "rec": 3764,
-        "status": "CAPPED_NOT_LOWEST",
-        "t": "2026-07-01T19:17:06+00:00"
-      },
-      {
         "comp_min": 3575.0,
         "rec": 3764,
         "status": "CAPPED_NOT_LOWEST",
@@ -382,6 +376,12 @@
         "rec": 3764,
         "status": "CAPPED_NOT_LOWEST",
         "t": "2026-07-03T21:17:03+00:00"
+      },
+      {
+        "comp_min": 3243.0,
+        "rec": 3764,
+        "status": "CAPPED_NOT_LOWEST",
+        "t": "2026-07-04T00:17:04+00:00"
       }
     ],
     "label": "M103 (L101 vs L102)",
@@ -401,17 +401,11 @@
     "recommended_list": 3398,
     "recommended_price": 3764,
     "section": "215",
-    "updated_at": "2026-07-03T21:17:03+00:00"
+    "updated_at": "2026-07-04T00:17:04+00:00"
   },
   "m89": {
     "current_price": 1745.0,
     "history": [
-      {
-        "comp_min": 1636.0,
-        "rec": 1799,
-        "status": "RAISE",
-        "t": "2026-07-01T15:17:04+00:00"
-      },
       {
         "comp_min": 2820.0,
         "rec": 2818,
@@ -585,6 +579,12 @@
         "rec": 1621,
         "status": "PROMOTE",
         "t": "2026-07-03T21:17:03+00:00"
+      },
+      {
+        "comp_min": 1623.0,
+        "rec": 1621,
+        "status": "PROMOTE",
+        "t": "2026-07-04T00:17:04+00:00"
       }
     ],
     "label": "M89 (W74 vs W77)",
@@ -601,6 +601,6 @@
     "recommended_list": 1475,
     "recommended_price": 1621,
     "section": "105",
-    "updated_at": "2026-07-03T21:17:03+00:00"
+    "updated_at": "2026-07-04T00:17:04+00:00"
   }
 }
