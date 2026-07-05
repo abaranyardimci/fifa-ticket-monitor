@@ -204,12 +204,6 @@
     "current_price": 4428.9844,
     "history": [
       {
-        "comp_min": 3575.0,
-        "rec": 3764,
-        "status": "CAPPED_NOT_LOWEST",
-        "t": "2026-07-03T01:17:02+00:00"
-      },
-      {
         "comp_min": 3270.0,
         "rec": 3764,
         "status": "CAPPED_NOT_LOWEST",
@@ -382,26 +376,32 @@
         "rec": 3764,
         "status": "CAPPED_NOT_LOWEST",
         "t": "2026-07-05T17:17:06+00:00"
+      },
+      {
+        "comp_min": 3988.0,
+        "rec": 3986,
+        "status": "PROMOTE",
+        "t": "2026-07-05T18:17:06+00:00"
       }
     ],
     "label": "M103 (L101 vs L102)",
     "last_applied_at": "2026-06-30T23:25:13+00:00",
     "last_applied_list": 3998,
     "last_applied_payout": 7196.4,
-    "last_competitor_min": 3575.0,
-    "last_emailed_at": "2026-07-05T01:17:06+00:00",
-    "last_emailed_price": 3764,
-    "last_emailed_status": "CAPPED_NOT_LOWEST",
+    "last_competitor_min": 3988.0,
+    "last_emailed_at": "2026-07-05T18:17:06+00:00",
+    "last_emailed_price": 3986,
+    "last_emailed_status": "PROMOTE",
     "last_listing_count": 1,
-    "last_status": "CAPPED_NOT_LOWEST",
-    "pending_allin": 3764,
-    "pending_at": "2026-07-05T01:17:06+00:00",
-    "pending_list": 3398,
-    "pending_nonce_hmac": "f12ce3003dce80c828023b7c6345bb77447372a929b3d76d6c28ba7d7801caf0",
-    "recommended_list": 3398,
-    "recommended_price": 3764,
+    "last_status": "PROMOTE",
+    "pending_allin": 3986,
+    "pending_at": "2026-07-05T18:17:06+00:00",
+    "pending_list": 3598,
+    "pending_nonce_hmac": "5ef62f20b7e3911d2141c5ad8b258af7066ff568a27becbd7c56ebeebb094bc6",
+    "recommended_list": 3598,
+    "recommended_price": 3986,
     "section": "215",
-    "updated_at": "2026-07-05T17:17:06+00:00"
+    "updated_at": "2026-07-05T18:17:06+00:00"
   },
   "m89": {
     "current_price": 1745.0,
