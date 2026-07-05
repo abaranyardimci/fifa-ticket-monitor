@@ -204,12 +204,6 @@
     "current_price": 4428.9844,
     "history": [
       {
-        "comp_min": 3899.0,
-        "rec": 3897,
-        "status": "PROMOTE",
-        "t": "2026-07-02T17:17:02+00:00"
-      },
-      {
         "comp_min": 3575.0,
         "rec": 3764,
         "status": "CAPPED_NOT_LOWEST",
@@ -382,6 +376,12 @@
         "rec": 3764,
         "status": "CAPPED_NOT_LOWEST",
         "t": "2026-07-05T01:17:06+00:00"
+      },
+      {
+        "comp_min": 3545.0,
+        "rec": 3764,
+        "status": "CAPPED_NOT_LOWEST",
+        "t": "2026-07-05T02:17:01+00:00"
       }
     ],
     "label": "M103 (L101 vs L102)",
@@ -401,7 +401,7 @@
     "recommended_list": 3398,
     "recommended_price": 3764,
     "section": "215",
-    "updated_at": "2026-07-05T01:17:06+00:00"
+    "updated_at": "2026-07-05T02:17:01+00:00"
   },
   "m89": {
     "current_price": 1745.0,
